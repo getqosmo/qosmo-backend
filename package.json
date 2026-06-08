@@ -1,0 +1,22 @@
+{
+  "name": "qosmo-content-engine",
+  "version": "1.0.0",
+  "description": "Autonomous sports card market content generation engine",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "schedule": "node src/scheduler.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
+    "axios": "^1.17.0",
+    "dotenv": "^16.3.1",
+    "node-schedule": "^2.1.1"
+  },
+  "devDependencies": {}
+}

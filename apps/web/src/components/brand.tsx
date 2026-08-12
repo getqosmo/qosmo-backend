@@ -1,12 +1,22 @@
 /**
  * Brand components.
  *
- * The mark is rendered inline rather than loaded from `/brand/mark.svg` as an
- * image, so it inherits `currentColor` and adapts to light and dark themes and
- * to whatever surface it sits on. One file, two themes, no flash of the wrong
- * colour on load.
+ * The mark is a **shelter resting on a line**.
  *
- * To drop in different artwork, see `public/brand/README.md`.
+ * The shelter is the product's premise: MyBot lives in your home, on your
+ * machine. The line beneath is the boundary it does not cross on its own —
+ * MyBot prepares, you approve. Both halves are load-bearing, which is why the
+ * baseline is wider than the walls rather than merely underlining them.
+ *
+ * It replaced an "M" in a rounded tile, which at any real size was
+ * indistinguishable from Gmail's mark — an unfortunate thing to resemble when
+ * the product's pitch is that it does not read your mail on somebody else's
+ * server. Candidates were rendered at 16/24/32/64/128 and on dark before
+ * choosing; a mark that only works in a presentation is not a mark.
+ *
+ * Rendered inline rather than loaded from `/brand/mark.svg` so it inherits
+ * `currentColor` and adapts to light and dark without a flash of the wrong
+ * colour on load. To drop in different artwork see `public/brand/README.md`.
  */
 
 export function LogoMark({
@@ -17,7 +27,7 @@ export function LogoMark({
   /** `brand` = filled tile. `mono` = strokes only, inherits currentColor. */
   tone?: 'brand' | 'mono';
 }) {
-  const stroke = tone === 'brand' ? '#ffffff' : 'currentColor';
+  const ink = tone === 'brand' ? '#ffffff' : 'currentColor';
   return (
     <svg
       width={size}
@@ -30,17 +40,19 @@ export function LogoMark({
       {tone === 'brand' ? (
         <rect width="64" height="64" rx="16" className="brand-tile" />
       ) : null}
-      {/* Two ascending strokes: an M, and a roofline — MyBot lives in your home. */}
+      {/* Roof and right wall in one stroke, left wall in another: the join at
+          the apex stays crisp at small sizes this way. */}
       <path
-        d="M16 44V26.5a1.5 1.5 0 0 1 2.56-1.06L32 38.88l13.44-13.44A1.5 1.5 0 0 1 48 26.5V44"
+        d="M17 30L32 16.5L47 30v10.5"
         fill="none"
-        stroke={stroke}
+        stroke={ink}
         strokeWidth="5.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* The Core. */}
-      <circle cx="32" cy="20" r="3.25" fill={stroke} />
+      <path d="M17 30v10.5" fill="none" stroke={ink} strokeWidth="5.5" strokeLinecap="round" />
+      {/* The line. Wider than the shelter, because it is not an underline. */}
+      <rect x="13.5" y="44.5" width="37" height="4.5" rx="2.25" fill={ink} />
     </svg>
   );
 }

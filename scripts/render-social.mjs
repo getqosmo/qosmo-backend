@@ -43,9 +43,10 @@ const MONO = "ui-monospace,'SF Mono',Menlo,Consolas,monospace";
 const mark = (size = 72, tile = ACCENT, stroke = '#ffffff') => `
   <svg width="${size}" height="${size}" viewBox="0 0 64 64">
     <rect width="64" height="64" rx="16" fill="${tile}"/>
-    <path d="M16 44V26.5a1.5 1.5 0 0 1 2.56-1.06L32 38.88l13.44-13.44A1.5 1.5 0 0 1 48 26.5V44"
-      fill="none" stroke="${stroke}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="32" cy="20" r="3.25" fill="${stroke}"/>
+    <path d="M17 30L32 16.5L47 30v10.5" fill="none" stroke="${stroke}" stroke-width="5.5"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M17 30v10.5" fill="none" stroke="${stroke}" stroke-width="5.5" stroke-linecap="round"/>
+    <rect x="13.5" y="44.5" width="37" height="4.5" rx="2.25" fill="${stroke}"/>
   </svg>`;
 
 const frame = (inner, { bg = PAPER, fg = INK, pad = 96 } = {}) => `

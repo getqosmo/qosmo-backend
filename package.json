@@ -6,6 +6,8 @@
   "scripts": {
     "brand": "node scripts/render-brand.mjs",
     "social": "node scripts/render-social.mjs",
+    "screens": "node scripts/capture-screens.mjs",
+    "site": "node scripts/build-site.mjs",
     "smoke": "node scripts/ui-smoke.mjs",
     "web:dev": "npm --prefix apps/web run dev",
     "web:build": "npm --prefix apps/web run build",

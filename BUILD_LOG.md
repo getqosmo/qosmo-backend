@@ -679,6 +679,42 @@ to live, the session cookie reports `httpOnly: true, sameSite: Strict`, a write
 through the UI still succeeds, and signing out removes the cookie. Zero console
 errors.
 
+### The visual identity, redone properly
+
+**The mark was Gmail's.** An "M" in a green rounded tile — at 64px and above it
+was close enough to Gmail's mark to be a problem, which is an unfortunate thing
+to resemble when the product's pitch is that it does not read your mail on
+somebody else's server. Nobody had looked at it next to anything.
+
+Six candidates were drawn and rendered at 16/24/32/64/128 and on dark before
+choosing, which is the part that made the decision easy rather than a matter of
+taste. Two died on meaning alone: one read as a **camera** (the worst possible
+association for a privacy product) and one as a **user avatar**. Two read as an
+**eject button**. Several dissolved at 16px.
+
+The winner is a **shelter resting on a line** — the shelter because MyBot lives
+in your home on your machine, the line because that is where it stops on its
+own. The baseline is deliberately wider than the walls, so it reads as ground
+rather than as an underline.
+
+**The link-preview card was a text slide.** It showed the tagline on an empty
+background, which told a stranger nothing about what the thing *is* — and that
+image is the only one most people will ever see of MyBot. It now carries a real
+screenshot of the running app, cropped past the sidebar (navigation is the least
+interesting part of a product shot) and composed as two clean zones rather than
+a gradient fade, because a wash over a screenshot reads as a rendering fault
+rather than a design decision.
+
+**Real screenshots, not recreations.** `scripts/capture-screens.mjs` drives the
+running app and captures the actual screens; the site inlines them. A marketing
+page that draws its own version of the product can drift from it, and the drift
+always flatters. The two on the page are the two that make the competitive
+argument: *What has left your machine* and *What it has learned about you*.
+
+The page is now built from `www/index.src.html` via `npm run site`, which
+inlines the screenshots as data URIs so the output stays a single
+self-contained file.
+
 ---
 
 ## Next steps

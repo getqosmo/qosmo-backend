@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MyBot">
+  <!-- Tile-less variant. Inherits currentColor, for use on any surface. -->
+  <path d="M17 30L32 16.5L47 30v10.5" fill="none" stroke="currentColor" stroke-width="5.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M17 30v10.5" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>
+  <rect x="13.5" y="44.5" width="37" height="4.5" rx="2.25" fill="currentColor"/>
+</svg>

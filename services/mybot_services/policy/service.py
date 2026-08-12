@@ -256,18 +256,15 @@ class PolicyService:
         severity: str = "info",
         details: dict | None = None,
     ) -> None:
-        from mybot_schemas.models import SecurityEvent
+        """Committed independently -- the Rule 2 refusal below raises, and a
+        record destroyed by the rollback of the thing it refused is no record
+        at all. See ``security_center.events``."""
+        from ..security_center.events import record_security_event
 
-        self.session.add(
-            SecurityEvent(
-                owner_id=owner_id,
-                event_type=event_type.value,
-                severity=severity,
-                summary=summary,
-                details=details or {},
-            )
+        record_security_event(
+            self.session, owner_id, event_type, summary,
+            severity=severity, details=details,
         )
-        self.session.flush()
 
 
 def _to_view(rule: PermissionRule) -> RuleView:

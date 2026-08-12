@@ -384,6 +384,11 @@ class AuditEventType(StrEnum):
     LLM_CALLED = "llm.called"
     SECURITY = "security"
     INTEGRATION_SYNCED = "integration.synced"
+    #: Connecting an account is the moment an owner hands MyBot reach into
+    #: something outside the machine, so it is audited as its own event rather
+    #: than folded into a generic settings change.
+    INTEGRATION_CONNECTED = "integration.connected"
+    INTEGRATION_DISCONNECTED = "integration.disconnected"
     USER_LOGIN = "user.login"
     DATA_EXPORTED = "data.exported"
     DATA_DELETED = "data.deleted"

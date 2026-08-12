@@ -61,7 +61,7 @@ from mybot_schemas.enums import (
     RiskLevel,
     SecurityEventType,
 )
-from mybot_schemas.models import ActionApproval, ActionProposal, SecurityEvent
+from mybot_schemas.models import ActionApproval, ActionProposal
 from mybot_security.crypto import canonical_json, sha256_hex
 from mybot_security.logging import current_request_id, get_logger
 from pydantic import ValidationError
@@ -816,17 +816,19 @@ class ActionFirewall:
         severity: str = "info",
         details: dict | None = None,
     ) -> None:
-        self.session.add(
-            SecurityEvent(
-                owner_id=owner_id,
-                event_type=event_type.value,
-                severity=severity,
-                summary=summary,
-                details=details or {},
-                request_id=current_request_id(),
-            )
+        """Committed independently. Approval replays and policy denials both
+        raise, and an event rolled back with the request it refused is no
+        evidence at all. See ``security_center.events``."""
+        from ..security_center.events import record_security_event
+
+        record_security_event(
+            self.session,
+            owner_id,
+            event_type,
+            summary,
+            severity=severity,
+            details={**(details or {}), "request_id": current_request_id()},
         )
-        self.session.flush()
 
 
 def _status_for(outcome: ExecutionOutcome) -> str:

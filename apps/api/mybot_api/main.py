@@ -30,6 +30,7 @@ from .routers import (
     automations,
     chat,
     egress,
+    integrations,
     learning,
     life,
     security,
@@ -162,6 +163,7 @@ app.include_router(chat.router)
 app.include_router(automations.router)
 app.include_router(learning.router)
 app.include_router(egress.router)
+app.include_router(integrations.router)
 
 
 @app.on_event("startup")

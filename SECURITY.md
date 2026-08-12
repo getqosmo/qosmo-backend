@@ -352,6 +352,64 @@ appear broken. It is the intended default on Core hardware.
 
 ---
 
+## 9c. Connecting an account
+
+The OAuth flow (`mybot_services.oauth`) is authorization-code with **PKCE
+(S256)** only — no implicit flow, no client-side tokens. Five properties:
+
+1. **Refresh tokens never touch an ordinary column.** They go into the Vault as
+   ciphertext; the `Integration` row holds a ref. A database dump yields
+   nothing usable, and there is a test that greps for the token across every
+   non-Vault column.
+2. **Adapters get an access token, never a refresh token.** A compromised
+   adapter costs one short-lived token rather than permanent access.
+3. **State is server-side, single-use, expiring, and bound to the owner who
+   started the flow.** That last part closes login-CSRF: without it, an attacker
+   consents with *their* Google account and gets the victim's browser to the
+   callback, leaving the victim's MyBot connected to the attacker's mailbox. It
+   is also why the callback requires a session rather than being a bare public
+   endpoint.
+4. **Redirect URIs are exact-matched** against a configured allowlist. Prefix
+   matching is how open redirectors become account takeovers; there is a test
+   covering five near-misses.
+5. **Read-only first.** Write scopes are a separate, later grant. Asking for
+   send permission on day one asks the owner for a decision they have no basis
+   for.
+
+Disconnecting revokes at the provider *before* deleting locally. The other order
+leaves a live grant on Google's side that the owner can no longer see or revoke
+from here — a disconnect that looks complete and is not. If the provider is
+unreachable the local credential is still destroyed, because otherwise
+"disconnect" silently does nothing.
+
+No OAuth client ships with the product. A shipped client id would mean every
+installation shared one identity at the provider.
+
+## 9d. Security events survive the failures they record
+
+Security events are written on **their own connection and committed
+immediately**, not on the caller's session.
+
+This was a real bug, found while wiring OAuth. Events were written on the
+request's session, so every event recorded on a *failure* path was destroyed
+when that request rolled back — and failure paths are where the events that
+matter live: a non-human actor attempting to create a permission rule (Rule 2),
+an approval replay, a policy denial on tainted input, a forged connection
+callback. Each records an event and then raises. The system was reliably keeping
+evidence of things going *right*.
+
+Two safeguards, because a logging path must never become a failure path: it
+falls back to the caller's session if the independent write cannot happen
+(SQLite write contention being the realistic case), and it never raises —
+turning "could not write the log line" into "your request failed" would let
+anybody who can cause a write error cause an outage.
+
+Note this is deliberately *not* how the audit chain works. `AuditEvent` is
+hash-chained and must be written in sequence inside the transaction it
+describes. Security events have no chain, which is what makes this safe.
+
+---
+
 ## 10. Backup and recovery
 
 Three things exist, and they protect different data.

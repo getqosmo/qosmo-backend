@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 from ..action_firewall.service import ActionFirewall
 from ..audit.service import AuditService
 from ..policy.service import PolicyService
+from .events import record_security_event
 
 log = get_logger(__name__)
 
@@ -517,17 +518,18 @@ class SecurityCenterService:
         *,
         severity: str = "info",
         details: dict | None = None,
-    ) -> SecurityEvent:
-        event = SecurityEvent(
-            owner_id=owner_id,
-            event_type=event_type.value,
+    ) -> SecurityEvent | None:
+        """Record an attempt. See ``events.record_security_event``: this is
+        committed independently so it survives a rollback of the request that
+        was being refused."""
+        return record_security_event(
+            self.session,
+            owner_id,
+            event_type,
+            summary,
             severity=severity,
-            summary=summary,
-            details=details or {},
+            details=details,
         )
-        self.session.add(event)
-        self.session.flush()
-        return event
 
 
 __all__ = ["LockdownError", "LockdownResult", "SecurityCenterService", "UNLOCK_AUTH_LEVEL"]

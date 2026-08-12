@@ -235,7 +235,7 @@ Honesty about a V0.1 matters more than a long feature list.
 | Marketing site & social kit | `www/`. `npm run social` regenerates the assets |
 | Document ingestion (PDF + text) | Real. **No OCR** — images are stored and say so |
 | Calendar & email connectors | **Simulated by default.** Realistic fixtures |
-| Google Calendar / Gmail adapters | Code complete, **not verified against live Google**. OAuth flow not wired |
+| Google Calendar / Gmail adapters | Code complete, **not verified against live Google**. OAuth flow is now built and tested against a fake authorization server |
 | Model providers | Mock (default), Anthropic, OpenAI, local/Ollama |
 | Notification delivery | In-app only. Push and email transports are not built; the model and the restraint logic are |
 | Payments, taxes, government filing | **Deliberately not implemented.** The registry, policy and approval UI exist; the adapter returns FAILED, never success |

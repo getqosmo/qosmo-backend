@@ -530,3 +530,110 @@ def _module_source(module_name: str) -> str:
         return inspect.getsource(module)
     except OSError:  # pragma: no cover
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Security events must survive the failure they record
+#
+# Found while wiring OAuth: security events were written on the caller's
+# session, so every one recorded on a *failure* path was destroyed when that
+# request rolled back. The events that matter most are precisely the ones that
+# raise -- a Rule 2 violation, an approval replay, a policy denial on tainted
+# input -- so the system was reliably keeping evidence of things going right.
+# ---------------------------------------------------------------------------
+
+
+def test_a_security_event_survives_the_rollback_of_the_request_that_raised(
+    api, registered
+):
+    """The regression test for the bug.
+
+    A forged account-connection callback records an event and then returns 400.
+    The event must still be there afterwards.
+    """
+    account = registered()
+
+    response = api.post(
+        "/api/v1/integrations/callback",
+        json={"state": "forged-state", "code": "irrelevant"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 400
+
+    events = api.get("/api/v1/security/events", headers=account["headers"]).json()
+    summaries = [e["summary"] for e in events["items"]]
+    assert any("callback" in s for s in summaries), (
+        "the security event was rolled back with the request it refused"
+    )
+
+
+def test_rule_two_violations_are_recorded_even_though_they_raise(db, alice, services, as_alice):
+    """Rule 2's own evidence.
+
+    `create_rule` records the attempt and then raises PermissionDenied. If that
+    record dies with the transaction, the one event nobody can afford to lose is
+    the one guaranteed to be lost.
+    """
+    import sqlalchemy as sa
+    from mybot_schemas.enums import ActorType, AuthLevel
+    from mybot_schemas.models import SecurityEvent
+    from mybot_services.policy.service import PermissionDenied
+
+    with pytest.raises(PermissionDenied):
+        services.policy.create_rule(
+            alice.id,
+            action_type="calendar.create",
+            actor_type=ActorType.AGENT,
+            auth_level=AuthLevel.STRONG,
+            created_by="the-model",
+        )
+
+    db.rollback()
+
+    rows = db.execute(
+        sa.select(SecurityEvent).where(SecurityEvent.owner_id == alice.id)
+    ).scalars().all()
+    assert any("non-human actor" in r.summary for r in rows), (
+        "the Rule 2 refusal left no evidence after a rollback"
+    )
+
+
+def test_the_fallback_path_is_used_when_the_independent_write_fails(db, alice, monkeypatch):
+    """SQLite write contention is the realistic case. The event still lands,
+    on the caller's session -- worse, but not nothing."""
+    from mybot_schemas.enums import SecurityEventType
+    from mybot_services.security_center import events as events_mod
+
+    monkeypatch.setattr(events_mod, "_write_independently", lambda payload: False)
+
+    row = events_mod.record_security_event(
+        db, alice.id, SecurityEventType.POLICY_DENIED, "contended"
+    )
+    assert row is not None
+    assert row.summary == "contended"
+
+
+def test_recording_a_security_event_can_never_break_a_request(db, alice, monkeypatch):
+    """A logging path must not become a failure path.
+
+    If it could, anybody able to provoke a write error could provoke an outage.
+    """
+    from mybot_schemas.enums import SecurityEventType
+    from mybot_services.security_center import events as events_mod
+
+    def explode(*_a, **_k):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(events_mod, "_write_independently", lambda payload: False)
+
+    class BrokenSession:
+        def add(self, _row):
+            explode()
+
+    # Both the independent write and the fallback fail; the call still returns.
+    assert (
+        events_mod.record_security_event(
+            BrokenSession(), alice.id, SecurityEventType.POLICY_DENIED, "test"
+        )
+        is None
+    )

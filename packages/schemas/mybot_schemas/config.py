@@ -78,6 +78,16 @@ class Settings(BaseSettings):
 
     integrations_mode: str = "mock"
 
+    #: OAuth client credentials. No defaults, ever -- an integration that
+    #: silently works with a shipped client id would mean every installation
+    #: shared one identity at the provider.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    #: Exact-match allowlist for OAuth redirects. Prefix matching on redirect
+    #: URIs is how open redirectors become account takeovers, so this is
+    #: compared verbatim.
+    oauth_redirect_uris: str = "http://localhost:3000/integrations/callback"
+
     proactive_enabled: bool = True
     proactive_interval_seconds: int = 300
 
@@ -86,6 +96,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.env.lower() == "production"
+
+    @property
+    def oauth_redirect_uri_list(self) -> tuple[str, ...]:
+        return tuple(u.strip() for u in self.oauth_redirect_uris.split(",") if u.strip())
 
     @property
     def cors_origin_list(self) -> list[str]:

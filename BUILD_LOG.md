@@ -567,6 +567,84 @@ would encourage people to feed it rather than correct it.
 
 ---
 
+## Increment 5 — the ledger completed, OAuth, and a security-event bug
+
+426 tests (up from 366).
+
+### Completing the egress ledger
+
+The ledger is the sharpest claim MyBot makes and it was incomplete in exactly
+the way that would have discredited it: it counted model calls only. A sync to
+Gmail sends the owner's identity and a query outward, so a ledger reading
+"nothing has left this machine" while a mailbox was being polled would have
+been the precise dishonesty the feature exists to prevent. **A read is egress.**
+
+New `EgressEvent` table, unioned with `LLMRun`. Two tables rather than one is
+deliberate: each is written by the code that performs the thing it records, so
+neither can drift. A single "telemetry" table fed by a separate reporting path
+is the design that lets a ledger quietly under-report.
+
+### OAuth
+
+The piece standing between "the Google adapters are code-complete" and
+"somebody can connect their account". Authorization-code with PKCE, refresh
+tokens in the Vault only, state bound to the owner who began the flow, exact
+redirect matching, read-only first, revoke-before-delete on disconnect. Driven
+against a fake authorization server, which is the right level: what needs
+proving is not that httpx can POST, it is that the flow holds its properties
+under login-CSRF, replay, code interception, open redirect and database theft.
+
+### Findings
+
+**20. Security events were destroyed by the rollback of the failures they
+recorded.** The most serious finding in the build so far, and it was found by
+accident — a test asserting a forged OAuth callback left a trace, which it did
+not.
+
+Events were written on the caller's session. Every event on a *failure* path
+was therefore discarded when that request rolled back, and failure paths are
+where the events that matter live: a non-human actor attempting to create a
+permission rule (Rule 2's own evidence), an approval replay, a policy denial on
+tainted input. Each records an event and then raises. The system was reliably
+keeping evidence of the things that went right.
+
+Fixed by writing security events on their own connection, committed
+immediately — they are a log of attempts, not part of the unit of work being
+attempted, and coupling their durability to the success of the thing they
+record is backwards. Falls back to the caller's session under write contention,
+and never raises, because a logging path that can fail a request lets anybody
+who can provoke a write error provoke an outage. Deliberately *not* applied to
+the audit chain, which is hash-linked and must be written in sequence inside
+the transaction it describes.
+
+**21. The email sync recorded egress on failure but not on success.** Caught by
+a test that drives `sync_all` rather than the helper — testing the wiring, not
+the unit.
+
+**22. Ledger totals were computed from the truncated event list**, so a smaller
+page size shrank the headline numbers.
+
+**23. The Alembic template, at last.** Four consecutive migrations shipped with
+a NameError because autogenerate emits fully-qualified references to the custom
+type decorators without importing them. Fixed in `script.py.mako` rather than by
+hand a fifth time. The first attempt failed because a literal `${imports}` in the
+explanatory comment was interpolated by Mako.
+
+### Decisions
+
+**Sovereign mode governs models, not connectors.** Somebody running sovereign
+with Gmail connected must not be told nothing left — their mail provider is
+still being contacted. Conflating the two would be the ledger telling a
+comfortable lie, so there is a test.
+
+**Simulated connectors are recorded as having stayed, not omitted.** The local
+count stays truthful rather than silently under-reporting what MyBot did.
+
+**No OAuth client ships with the product.** A shipped client id would mean every
+installation shared one identity at the provider.
+
+---
+
 ## Next steps
 
 Immediate, in order:

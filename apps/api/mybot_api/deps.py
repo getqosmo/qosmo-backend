@@ -55,6 +55,7 @@ from mybot_services.learning import LearningService
 from mybot_services.life_graph.service import LifeGraphService
 from mybot_services.memory.service import MemoryService
 from mybot_services.notifications.service import NotificationService
+from mybot_services.oauth import OAuthFlow
 from mybot_services.obligations.service import ObligationService
 from mybot_services.policy.service import PolicyService
 from mybot_services.proactive.engine import ProactiveEngine
@@ -335,6 +336,19 @@ def require_strong(principal: Principal = Depends(get_principal)) -> Principal:
 # ---------------------------------------------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _pending_oauth_store():
+    """One in-flight-consent store for the process.
+
+    Must outlive a request: the flow begins on one call and completes on
+    another, and a per-request store would make every callback look like a
+    replay.
+    """
+    from mybot_services.oauth import PendingStore
+
+    return PendingStore()
+
+
 @dataclass
 class ServiceBundle:
     """Everything a router needs, wired to one session and one owner."""
@@ -357,6 +371,7 @@ class ServiceBundle:
     automations: AutomationEngine
     learning: LearningService
     egress: EgressService
+    oauth: OAuthFlow
     registry: IntegrationRegistry
     router: ModelRouter
     vault: Vault
@@ -396,6 +411,15 @@ def get_services(
         automations=AutomationEngine(db, firewall, policy=policy, audit=audit),
         learning=learning,
         egress=EgressService(db),
+        oauth=OAuthFlow(
+            db,
+            vault,
+            audit=audit,
+            client_id=get_settings().google_client_id,
+            client_secret=get_settings().google_client_secret,
+            allowed_redirect_uris=get_settings().oauth_redirect_uri_list,
+            store=_pending_oauth_store(),
+        ),
         registry=registry,
         router=get_router(),
         vault=vault,

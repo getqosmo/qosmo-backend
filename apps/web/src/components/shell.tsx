@@ -39,6 +39,7 @@ const NAV_TRUST = [
   { href: '/growth', label: 'What it has learned' },
   { href: '/egress', label: 'What has left' },
   { href: '/automations', label: 'Standing rules' },
+  { href: '/connect', label: 'Connected accounts' },
   { href: '/vault', label: 'Documents & keys' },
 ];
 

@@ -252,6 +252,7 @@ Nothing in this build fakes a completed integration. A simulated result says
 
 | | |
 |---|---|
+| [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md) | Running it on your own machine: a real local model, real Google, your data |
 | [`docs/POSITIONING.md`](docs/POSITIONING.md) | Why Alexa and Google structurally cannot ship this, and what we must not claim |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Components, boundaries, data flow, the decisions and why |
 | [`SECURITY.md`](SECURITY.md) | Security architecture, secrets model, key management, known limitations |

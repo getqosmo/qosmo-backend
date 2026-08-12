@@ -63,6 +63,8 @@ from mybot_services.proactive.sync import ConnectorSync
 from mybot_services.security_center.service import SecurityCenterService
 from sqlalchemy.orm import Session
 
+from .websession import enforce_csrf, token_from_request
+
 log = get_logger(__name__)
 
 UNAUTHENTICATED = HTTPException(
@@ -279,11 +281,14 @@ def get_principal(
     from "expired session" from "revoked device" would leak state to whoever is
     probing.
     """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise UNAUTHENTICATED
-    token = authorization.split(" ", 1)[1].strip()
+    token, source = token_from_request(request, authorization)
     if not token:
         raise UNAUTHENTICATED
+
+    # Cookie-authenticated writes need a CSRF token. Checked before the session
+    # lookup so a forged request costs an attacker nothing and tells them
+    # nothing about whether the cookie they induced is even valid.
+    enforce_csrf(request, source)
 
     # The session lookup itself must run unscoped -- we do not yet know whose
     # session it is. This is the one place that is legitimate, and it resolves
@@ -315,6 +320,7 @@ def get_principal(
     principal = Principal(
         user=user, session=auth_session, auth_level=level, device_id=auth_session.device_id
     )
+    request.state.auth_source = source
     request.state.owner_id = user.id
     request.state.principal = principal
 

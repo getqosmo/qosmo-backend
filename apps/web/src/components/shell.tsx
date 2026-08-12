@@ -19,7 +19,7 @@ import Link from 'next/link';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { ApiError, api, getToken, setToken } from '@/lib/api';
+import { ApiError, api, hasSession } from '@/lib/api';
 import { LogoMark, TAGLINE } from './brand';
 import type { Me } from '@/lib/api';
 import { NotificationBell } from './notifications';
@@ -67,7 +67,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   const refresh = useCallback(async () => {
-    if (!getToken()) {
+    // A hint, not an authorisation check -- the session cookie is httpOnly and
+    // invisible here, so this only avoids a pointless 401 on first paint.
+    if (!hasSession()) {
       setMe(null);
       setReady(true);
       return;
@@ -86,8 +88,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const signOut = useCallback(() => {
+    // The server revokes the session and clears the cookies; there is nothing
+    // for the browser to forget on its own.
     void api.post('/api/v1/auth/logout').catch(() => undefined);
-    setToken(null);
     setMe(null);
   }, []);
 
@@ -180,11 +183,14 @@ function SignIn({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.post<{ access_token: string }>(
-        '/api/v1/auth/login',
-        { email, password, device_name: 'Browser' },
-      );
-      setToken(result.access_token);
+      // The response carries a token for non-browser callers; this app
+      // deliberately ignores it and relies on the httpOnly cookie the server
+      // set, which JavaScript here cannot read.
+      await api.post('/api/v1/auth/login', {
+        email,
+        password,
+        device_name: 'Browser',
+      });
       await onSignedIn();
       router.refresh();
     } catch (err) {

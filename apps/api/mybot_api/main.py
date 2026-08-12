@@ -36,6 +36,7 @@ from .routers import (
     security,
     today,
 )
+from .websession import CSRF_HEADER
 
 settings = get_settings()
 configure_logging(settings.log_level, json_output=settings.env != "development")
@@ -61,7 +62,7 @@ app.add_middleware(
     # Explicit rather than "*": a wildcard here would let any origin drive the
     # approval endpoints with a stolen token.
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", CSRF_HEADER],
 )
 
 

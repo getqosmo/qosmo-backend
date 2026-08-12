@@ -227,6 +227,8 @@ Honesty about a V0.1 matters more than a long feature list.
 | Policy engine, Action Firewall, audit chain, Vault, lockdown | Real, tested |
 | Proactive daemon, automations, notifications | Real, tested |
 | Rate limiting / brute-force protection | Real, tested. In-process (single-node) |
+| Browser sessions | httpOnly + SameSite=Strict cookies with CSRF tokens. Verified in a browser |
+| Google OAuth consent flow | Real, tested against a fake authorization server. No live Google verification |
 | Prompt-injection defences | Real, architectural, tested adversarially |
 | Per-owner learning (corrections, preferences, growth) | Real, tested. Deterministic, never grants authority |
 | Sovereign mode (nothing leaves the machine) | Real, tested. Needs a local model to be useful |

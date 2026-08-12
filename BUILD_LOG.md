@@ -643,6 +643,42 @@ count stays truthful rather than silently under-reporting what MyBot did.
 **No OAuth client ships with the product.** A shipped client id would mean every
 installation shared one identity at the provider.
 
+### Cookie sessions and CSRF — two limitations that were one
+
+Known limitations #2 and #10 were closed together, because closing either alone
+makes the other worse. The session token lived in `sessionStorage`, readable by
+any XSS. There were no CSRF tokens — which was *safe* precisely because auth was
+bearer-only: a cross-site form post carries no `Authorization` header.
+
+Moving the token into an httpOnly cookie takes it out of JavaScript's reach and
+hands the browser the job of attaching it, which is exactly what makes CSRF
+possible. One change, not two.
+
+Layered: SameSite=Strict is the primary control and is enforced by the browser;
+a double-submit CSRF token in a header is belt and braces on top, because
+SameSite is a browser behaviour and browsers vary.
+
+Three decisions inside it:
+
+**The CSRF token is not derived from the session token.** A readable value
+derived from a secret is a downgrade of that secret.
+
+**Header only** — never a query parameter. A token in a query parameter ends up
+in browser history, in server logs, and in `Referer` headers sent to third
+parties.
+
+**Bearer callers are exempt from the CSRF check**, and that is reasoning rather
+than oversight. CSRF exists because browsers attach cookies automatically and
+never attach an `Authorization` header automatically. Requiring a token from the
+CLI would protect nothing and break every script. The exemption is keyed on how
+the request authenticated, not on a flag somebody can set.
+
+Verified in a real browser rather than only in tests: `document.cookie` shows
+the CSRF token and nothing else, `sessionStorage` is empty where the token used
+to live, the session cookie reports `httpOnly: true, sameSite: Strict`, a write
+through the UI still succeeds, and signing out removes the cookie. Zero console
+errors.
+
 ---
 
 ## Next steps

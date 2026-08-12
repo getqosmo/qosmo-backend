@@ -188,6 +188,46 @@ world-readable window), `keyring` (OS keychain), `env` (containers/KMS),
 
 ---
 
+## 5a. Browser sessions: cookies and CSRF
+
+The browser session is an **httpOnly, SameSite=Strict** cookie, `Secure`
+outside development. JavaScript cannot read it, so an XSS that would previously
+have exfiltrated a working session token now gets nothing.
+
+Handing the browser the job of attaching credentials is exactly what makes
+cross-site request forgery possible, so the two changes shipped together.
+Defence is layered:
+
+* **SameSite=Strict** — the browser will not attach the session cookie to a
+  request originating from another site at all. This is the primary control and
+  it is enforced by the browser rather than by us.
+* **Double-submit CSRF token** — a second, deliberately *readable* cookie,
+  echoed in an `X-MyBot-CSRF` header on every state-changing request. An
+  attacker's page can cause a request to be sent; same-origin policy stops it
+  reading that cookie to copy the value. Belt and braces on top of SameSite,
+  because SameSite is a browser behaviour and browsers vary.
+
+Three details that are decisions rather than defaults:
+
+**The CSRF token is not derived from the session token.** A readable value
+derived from a secret is a downgrade of that secret.
+
+**The token is accepted in a header only** — never a query parameter, never a
+form field. A token in a query parameter ends up in browser history, in server
+logs, and in `Referer` headers sent to third parties.
+
+**Bearer callers are exempt from the CSRF check**, and that is safe rather than
+a hole. CSRF exists because browsers attach cookies automatically and never
+attach an `Authorization` header automatically; a cross-site attacker cannot
+forge one. Requiring a token from the CLI would protect nothing and break every
+script.
+
+Logout revokes server-side *and* clears the cookies, in that order. Clearing
+the cookie alone would leave a live token anybody holding a copy could keep
+using.
+
+---
+
 ## 6. Prompt-injection strategy
 
 Layered, with the load-bearing layers below the model.
@@ -264,10 +304,11 @@ marketing.
    protection against an attacker who already has the user's account. The Core
    hardware closes this gap; today it is honest about being development-grade,
    including in the Security Center UI.
-2. **Session token in `sessionStorage`.** Dies with the tab, but readable by
-   XSS. Production should move to an httpOnly, SameSite=Strict cookie. The
-   token is short-lived and revocable, which limits the damage, not the
-   exposure.
+2. ~~**Session token in `sessionStorage`.**~~ **Closed.** The browser session
+   now lives in an httpOnly, SameSite=Strict cookie that JavaScript cannot
+   read, with double-submit CSRF protection (§5a). Bearer tokens remain for
+   non-browser callers. Verified in a real browser: `document.cookie` shows
+   only the CSRF token and `sessionStorage` is empty.
 3. **Rate limiting is in-process.** Correct for the single-node Core, but a
    multi-node deployment needs shared state; ``RateLimitStore`` is an interface
    with an obvious Redis implementation. It also fails *open* by design (see
@@ -292,9 +333,9 @@ marketing.
 9. **Chat history retention is not yet enforced.** Messages are stored
    separately from durable memory but no expiry job runs. Notifications *are*
    purged on a schedule by the daemon.
-10. **No CSRF tokens.** The API is bearer-token only with an explicit CORS
-   allowlist (never `*`), so cookie-based CSRF does not apply — but a
-   cookie-based deployment would need them.
+10. ~~**No CSRF tokens.**~~ **Closed together with #2**, because they are one
+   change: moving the token into a cookie is what takes it out of XSS's reach
+   *and* what makes CSRF possible. See §5a.
 
 ---
 

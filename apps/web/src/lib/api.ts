@@ -1,15 +1,21 @@
 /**
  * API client.
  *
- * Two deliberate choices:
+ * Three deliberate choices:
  *
- * 1. The session token lives in `sessionStorage`, not `localStorage`. It dies
- *    with the tab, which is the right default for something holding a
- *    person's entire life. A production deployment should move to an
- *    httpOnly, SameSite=Strict cookie so XSS cannot read it at all; that is
- *    noted in SECURITY.md as a known limitation of this build.
+ * 1. **The session token is never held by JavaScript.** It lives in an
+ *    httpOnly, SameSite=Strict cookie the browser attaches for us, so XSS
+ *    cannot read it. There is no `getToken` here to steal, which is the whole
+ *    point — the previous build kept it in `sessionStorage`, where any
+ *    injected script could take it.
  *
- * 2. Errors are surfaced with their reasons intact. When the policy engine
+ * 2. **Writes carry a CSRF token.** Handing the browser the job of attaching
+ *    credentials is exactly what makes cross-site request forgery possible, so
+ *    the two changes came together. The token is read from a *separate*,
+ *    readable cookie and echoed in a header: an attacker's page can cause a
+ *    request to be sent, but same-origin policy stops it reading that cookie.
+ *
+ * 3. Errors are surfaced with their reasons intact. When the policy engine
  *    refuses something, the user should see *why* — "amount exceeds the
  *    $600 limit you set" — not a generic failure.
  */
@@ -17,7 +23,23 @@
 const BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 
-const TOKEN_KEY = 'mybot.session';
+const CSRF_COOKIE = 'mybot_csrf';
+const CSRF_HEADER = 'X-MyBot-CSRF';
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * Read the CSRF token the server set.
+ *
+ * Readable on purpose. It authenticates nothing on its own — its only job is
+ * to prove the request came from a page that could read this origin's cookies.
+ */
+function csrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -30,31 +52,43 @@ export class ApiError extends Error {
   }
 }
 
-export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return window.sessionStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null) {
-  if (typeof window === 'undefined') return;
-  if (token) window.sessionStorage.setItem(TOKEN_KEY, token);
-  else window.sessionStorage.removeItem(TOKEN_KEY);
+/**
+ * Is there a session?
+ *
+ * The session cookie is httpOnly and therefore invisible here, so this asks
+ * about the CSRF cookie instead — same lifetime, set and cleared together.
+ * It is a hint for rendering, never an authorisation check: the server decides.
+ */
+export function hasSession(): boolean {
+  return csrfToken() !== null;
 }
 
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
   const headers: Record<string, string> = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...((options.headers as Record<string, string>) ?? {}),
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (UNSAFE.has(method)) {
+    const csrf = csrfToken();
+    if (csrf) headers[CSRF_HEADER] = csrf;
+  }
 
   let response: Response;
   try {
-    response = await fetch(`${BASE}${path}`, { ...options, headers });
+    // `credentials: include` is what sends the httpOnly session cookie
+    // cross-origin in development, where the app is on :3000 and the API on
+    // :8000. The CORS allowlist is explicit rather than "*" precisely because
+    // this is on.
+    response = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
   } catch {
     throw new ApiError(
       'MyBot is not reachable. Is the API running on ' + BASE + '?',
@@ -63,7 +97,6 @@ async function request<T>(
   }
 
   if (response.status === 401) {
-    setToken(null);
     throw new ApiError('Your session ended. Sign in again.', 401);
   }
 

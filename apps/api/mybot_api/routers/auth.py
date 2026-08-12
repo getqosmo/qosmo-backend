@@ -18,7 +18,7 @@ from __future__ import annotations
 import datetime as dt
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from mybot_schemas.config import Settings, get_settings
 from mybot_schemas.db.scope import session_owner_scope, session_system_scope
 from mybot_schemas.db.types import utcnow
@@ -52,6 +52,7 @@ from ..deps import (
     get_principal,
     get_vault,
 )
+from ..websession import clear_session_cookies, issue_session_cookies
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 log = get_logger(__name__)
@@ -83,7 +84,12 @@ class ElevateIn(BaseModel):
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db)):
+def register(
+    payload: RegisterIn,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """Create the owner account and its security scaffolding."""
     enforce_rate_limit("auth.register", request=request)
     settings = get_settings()
@@ -137,9 +143,18 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
             result="registered",
         )
 
+    # The browser gets an httpOnly cookie; the token is still returned for
+    # non-browser callers (the CLI, scripts, tests) which have no cookie jar.
+    # A browser client should ignore `access_token` entirely and rely on the
+    # cookie it cannot read.
+    csrf = issue_session_cookies(
+        response, token, max_age=settings.access_token_ttl_seconds
+    )
+
     return {
         "access_token": token,
         "token_type": "bearer",
+        "csrf_token": csrf,
         "expires_at": session_row.expires_at.isoformat(),
         "auth_level": AuthLevel.BASIC.value,
         "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
@@ -151,7 +166,12 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/login")
-def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
+def login(
+    payload: LoginIn,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     # Limited twice: by network, and by the email being tried. The first stops
     # one host walking a password list; the second stops a distributed attempt
     # concentrating on one account.
@@ -226,9 +246,18 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
             result="success",
         )
 
+    # The browser gets an httpOnly cookie; the token is still returned for
+    # non-browser callers (the CLI, scripts, tests) which have no cookie jar.
+    # A browser client should ignore `access_token` entirely and rely on the
+    # cookie it cannot read.
+    csrf = issue_session_cookies(
+        response, token, max_age=settings.access_token_ttl_seconds
+    )
+
     return {
         "access_token": token,
         "token_type": "bearer",
+        "csrf_token": csrf,
         "expires_at": session_row.expires_at.isoformat(),
         "auth_level": AuthLevel.BASIC.value,
         "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
@@ -315,9 +344,20 @@ def elevate(
 
 
 @router.post("/logout")
-def logout(principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
+def logout(
+    response: Response,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+):
+    """Revoke server-side *and* clear the cookies.
+
+    Server-side revocation is what actually ends the session -- clearing the
+    cookie alone would leave a live token that anybody holding a copy could
+    keep using. Both, in that order.
+    """
     principal.session.revoked_at = utcnow()
     db.flush()
+    clear_session_cookies(response)
     return {"ok": True}
 
 

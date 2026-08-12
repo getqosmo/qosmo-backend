@@ -197,8 +197,17 @@ whole design:
 > escalation performed by a statistic. MyBot does not make it.
 
 ```bash
-mybot backup life.mybot      # everything, including what it has learned
+mybot backup life.mybot            # everything, including what it has learned
+mybot model-check --provider local --apply   # prove your model is fit, and act on it
 ```
+
+**And it will not pretend a weak model is fine.** `mybot model-check` measures
+whether a model can do the five things MyBot actually needs — structured output,
+schema constraints, abstention, grounding, format adherence — grading every
+probe with ordinary code rather than an LLM judge. Fail a probe and the router
+stops routing that purpose to that model, falling back to MyBot's deterministic
+paths. A 3B model that classifies well but invents phone numbers gets to keep
+classifying.
 
 Honest limit: this is a per-user *individual*, not a per-user *model*. Nobody
 can hand you private frontier-model weights on consumer hardware today, and a

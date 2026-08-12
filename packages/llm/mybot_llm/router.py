@@ -25,6 +25,7 @@ from mybot_security.logging import current_request_id, get_logger
 from sqlalchemy.orm import Session
 
 from .base import LLMProvider, LLMRequest, LLMResponse, LLMUnavailable, SchemaViolation
+from .capabilities import CapabilityRegistry
 from .minimizer import assert_egress_allowed
 from .providers.cloud import AnthropicProvider, LocalProvider, OpenAIProvider
 from .providers.mock import MockProvider
@@ -40,10 +41,18 @@ PROVIDER_FACTORIES = {
 
 
 class ModelRouter:
-    def __init__(self, *, providers: dict[str, LLMProvider] | None = None):
+    def __init__(
+        self,
+        *,
+        providers: dict[str, LLMProvider] | None = None,
+        capabilities: CapabilityRegistry | None = None,
+    ):
         self.settings = get_settings()
         self._providers: dict[str, LLMProvider] = providers or {}
         self._fallback = self._providers.get("mock") or MockProvider()
+        #: Measured conformance results. Can only narrow routing, never widen
+        #: it -- see mybot_llm.capabilities for why that asymmetry matters.
+        self.capabilities = capabilities or CapabilityRegistry.load(self.settings.data_dir)
 
     def provider_for(self, purpose: LLMPurpose) -> LLMProvider:
         """Resolve the provider for a purpose, degrading gracefully.
@@ -64,6 +73,19 @@ class ModelRouter:
         if self.settings.sovereign and provider is not None and not provider.local:
             log.warning(
                 "llm.sovereign_blocked_provider", requested=name, purpose=purpose.value
+            )
+            provider = None
+
+        # A provider measured to fail this purpose is not used for it. Without
+        # this, `mybot model-check` would be a document somebody reads once;
+        # with it, discovering that a local model fabricates phone numbers
+        # actually stops it answering questions about somebody's life.
+        if provider is not None and not self.capabilities.permits(name, purpose):
+            log.warning(
+                "llm.capability_blocked",
+                provider=name,
+                purpose=purpose.value,
+                reasons=self.capabilities.reasons(name, purpose)[:2],
             )
             provider = None
 
@@ -94,6 +116,24 @@ class ModelRouter:
     ) -> tuple[LLMResponse | object, LLMRun]:
         """Execute a model call with egress control and metadata logging."""
         provider = self.provider_for(request.purpose)
+
+        # `provider_for` degrades to the fallback, and the fallback can itself
+        # be a provider that failed this purpose -- so the gate has to be
+        # re-checked on the thing actually about to be called. Without this,
+        # blocking a provider merely re-routes to another blocked one and
+        # enforces nothing.
+        #
+        # Raising is correct rather than harsh: every caller already handles
+        # LLMUnavailable by degrading to its deterministic path, which is the
+        # behaviour wanted here. "No model here can be trusted with this" and
+        # "no model is configured" deserve the same response.
+        if not self.capabilities.permits(provider.name, request.purpose):
+            reasons = self.capabilities.reasons(provider.name, request.purpose)
+            raise LLMUnavailable(
+                f"no model is cleared for {request.purpose.value} on this machine "
+                f"({provider.name} failed its check: "
+                f"{reasons[0] if reasons else 'a gating probe'})"
+            )
 
         assert_egress_allowed(
             provider_is_local=provider.local,
@@ -166,15 +206,23 @@ class ModelRouter:
         out = {}
         for purpose in LLMPurpose:
             provider = self.provider_for(purpose)
+            cleared = self.capabilities.permits(provider.name, purpose)
             out[purpose.value] = {
                 "provider": provider.name,
                 "model": provider.model_id(),
                 "local": provider.local,
                 "available": provider.available(),
+                # False means MyBot will use its deterministic path for this
+                # instead of a model it measured as unfit.
+                "cleared": cleared,
+                "blocked_because": (
+                    self.capabilities.reasons(provider.name, purpose) if not cleared else []
+                ),
             }
         out["_egress_ceiling"] = self.settings.max_external_classification.value
         out["_pii_tokenization"] = self.settings.pii_tokenization
         out["_sovereign"] = self.settings.sovereign
+        out["_measured_capabilities"] = self.capabilities.describe()
         # Stated as a fact the UI can show without interpreting: is there any
         # purpose whose model runs somewhere else?
         out["_fully_local"] = all(

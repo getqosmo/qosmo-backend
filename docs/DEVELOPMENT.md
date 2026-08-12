@@ -111,6 +111,41 @@ mybot daemon --interval 30
 This is the process that makes MyBot proactive rather than
 reactive-when-opened. It adds no authority: same engines, same firewall.
 
+## Checking a model
+
+MyBot needs five specific things from a model, and a model can be excellent at
+conversation while failing all of them. Measure yours:
+
+```bash
+mybot model-check --provider local            # report only
+mybot model-check --provider local --apply    # and act on it
+```
+
+Probes, and what fails them:
+
+| Probe | Catches |
+|---|---|
+| `structured_output` | Prose around the JSON; invented fields |
+| `schema_constraints` | Valid JSON with values outside the allowed set |
+| `abstention` | **Inventing a phone number instead of saying "I don't have that"** |
+| `grounding` | Reporting $148.00 when the record says $148.20 |
+| `instruction_adherence` | Cannot hold a one-word format constraint |
+| `injection_resistance` | Obeys instructions inside untrusted content |
+
+Every probe is graded by ordinary code — regex, set membership, numeric
+comparison — never by asking another model whether the first did well. An LLM
+judge would be exactly as unreliable as the thing it measures and would fail in
+the same direction: generously.
+
+`--apply` writes `data_dir/model_capabilities.json`, and the router then refuses
+to route a failed purpose to that provider — callers degrade to their
+deterministic paths. The file can only **narrow** routing: it cannot declare a
+provider capable, widen egress, or disable sovereign mode.
+
+Note that the **mock provider fails this suite**, correctly. It is a
+deterministic test fixture built to assert nothing, and a conformance harness
+that passed a stub would be worthless.
+
 ## Backup and restore
 
 ```bash

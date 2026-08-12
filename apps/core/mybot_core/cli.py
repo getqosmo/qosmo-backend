@@ -15,6 +15,7 @@ Commands::
     mybot verify-audit  check every owner's audit chain
     mybot worry         print "what do I need to worry about?"
     mybot learned       what MyBot has learned about you
+    mybot model-check   measure whether a model meets MyBot's requirements
     mybot backup        write an encrypted backup
     mybot restore       open an encrypted backup
 """
@@ -29,6 +30,7 @@ import sqlalchemy as sa
 from mybot_schemas.config import get_settings
 from mybot_schemas.db.scope import session_owner_scope, session_system_scope
 from mybot_schemas.db.session import create_all, get_engine, session_scope
+from mybot_schemas.enums import LLMPurpose
 from mybot_schemas.models import User
 from mybot_security.logging import configure_logging, get_logger
 
@@ -207,6 +209,79 @@ def cmd_worry(_args) -> int:
                     print()
                 print(f"  {report['closing']}\n")
     return 0
+
+
+def cmd_model_check(args) -> int:
+    """Measure whether a model can actually do what MyBot needs.
+
+    Exists because the alternative — publishing a blessed list of models —
+    ages into a lie. Hardware differs, quantisations differ, and models are
+    replaced monthly. So the owner measures their own, on their own machine.
+    """
+    from mybot_llm.capabilities import CapabilityRegistry
+    from mybot_llm.conformance import check_provider
+    from mybot_llm.router import PROVIDER_FACTORIES
+
+    settings = get_settings()
+    name = args.provider
+    factory = PROVIDER_FACTORIES.get(name)
+    if factory is None:
+        print(f"  Unknown provider {name!r}. Known: {', '.join(sorted(PROVIDER_FACTORIES))}")
+        return 2
+
+    provider = factory()
+    print(BANNER)
+    print(f"  Checking  : {name} ({provider.model_id()})")
+    print(f"  Runs      : {'on this machine' if provider.local else 'remotely'}")
+    print(f"  Repeats   : {args.repeats} per probe\n")
+
+    report = check_provider(provider, repeats=args.repeats)
+
+    for probe in report.probes:
+        mark = "PASS" if probe.passed else "FAIL"
+        latency = f"  {probe.latency_ms}ms" if probe.latency_ms else ""
+        print(f"  [{mark}]  {probe.name:<24} {probe.successes}/{probe.attempts}{latency}")
+        if not probe.passed:
+            print(f"          {probe.detail}")
+    print()
+
+    usable = report.usable_purposes
+    if usable:
+        print(f"  Usable for : {', '.join(p.value for p in usable)}")
+    else:
+        print("  Usable for : nothing. MyBot will use its deterministic paths only.")
+
+    unusable = [p for p in LLMPurpose if p not in usable]
+    for purpose in unusable:
+        reasons = report.reasons_for(purpose)
+        print(f"  Not {purpose.value}: {reasons[0] if reasons else 'a gating probe failed'}")
+
+    # The injection probe is reported and gates nothing, so say why.
+    injection = next((p for p in report.probes if p.name == "injection_resistance"), None)
+    if injection is not None and not injection.passed:
+        print(
+            "\n  Note: this model obeyed an instruction hidden in untrusted content.\n"
+            "  That does not gate anything -- MyBot's injection defences do not rely\n"
+            "  on the model resisting anything -- but it is worth knowing."
+        )
+
+    if name == "mock":
+        print(
+            "\n  The mock is a deterministic test fixture, not a model. It is built to\n"
+            "  assert nothing, so it fails the probes that measure asserting things\n"
+            "  correctly. MyBot's deterministic paths do not depend on it."
+        )
+
+    if args.apply:
+        registry = CapabilityRegistry.load(settings.data_dir)
+        registry.record(report)
+        path = registry.save(settings.data_dir)
+        print(f"\n  Recorded to {path}.")
+        print("  MyBot will no longer route the failed purposes to this provider.")
+    else:
+        print("\n  Re-run with --apply to make MyBot act on this.")
+
+    return 0 if report.ok else 1
 
 
 def cmd_learned(args) -> int:
@@ -510,6 +585,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify-audit", help="verify audit chain integrity").set_defaults(
         func=cmd_verify_audit
     )
+
+    check = sub.add_parser("model-check", help="measure whether a model meets MyBot's needs")
+    check.add_argument("--provider", default="local", help="provider name (default: local)")
+    check.add_argument("--repeats", type=int, default=3, help="attempts per probe")
+    check.add_argument(
+        "--apply", action="store_true",
+        help="record the result so MyBot stops routing failed purposes here",
+    )
+    check.set_defaults(func=cmd_model_check)
 
     learned = sub.add_parser("learned", help="what MyBot has learned about you")
     learned.add_argument("--owner", help="restrict to one owner id")

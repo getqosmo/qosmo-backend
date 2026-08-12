@@ -33,7 +33,7 @@ right shape for that.
 ## Tests
 
 ```bash
-.venv/bin/pytest                    # 210
+.venv/bin/pytest                    # 268
 .venv/bin/pytest tests/security     # the interesting ones
 .venv/bin/pytest tests/evals        # AI behaviour harness
 .venv/bin/ruff check .
@@ -100,11 +100,33 @@ and complete `possible_actions` including their parameters. Actions MyBot
 cannot construct should be marked `available: false` with a plain reason
 rather than offered and then failing.
 
+## Running the proactive loop
+
+```bash
+mybot daemon              # runs until interrupted
+mybot daemon --once       # a single pass, useful in a test loop
+mybot daemon --interval 30
+```
+
+This is the process that makes MyBot proactive rather than
+reactive-when-opened. It adds no authority: same engines, same firewall.
+
 ## Working on the frontend
 
-`npm run dev` for iteration. If you use `next start`, note that rebuilding
-while it runs leaves it serving dead chunk references — the page renders but
-never hydrates. Restart it after a build.
+`npm run dev` for iteration.
+
+If you use `next start`, **restart it after every build**. Rebuilding while it
+runs leaves it serving dead chunk references: the page renders from static HTML
+and never hydrates, so the UI looks correct and no button works. This cost real
+debugging time twice during development.
+
+## Brand assets
+
+```bash
+npm run brand             # rasterise the SVGs into PNG icons and the OG card
+```
+
+See `apps/web/public/brand/README.md` for dropping in your own artwork.
 
 ## Conventions
 

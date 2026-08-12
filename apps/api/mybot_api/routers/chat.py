@@ -8,7 +8,14 @@ from mybot_services.chat.service import ChatService
 from mybot_services.chat.tools import TOOL_SPECS
 from pydantic import BaseModel, Field
 
-from ..deps import Principal, ServiceBundle, coverage_from_sync, get_principal, get_services
+from ..deps import (
+    Principal,
+    ServiceBundle,
+    coverage_from_sync,
+    get_principal,
+    get_services,
+    rate_limited,
+)
 from ..serializers import document_out
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
@@ -23,7 +30,7 @@ class ChatIn(BaseModel):
     conversation_id: str | None = None
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(rate_limited("chat"))])
 def chat(
     payload: ChatIn,
     principal: Principal = Depends(get_principal),
@@ -109,7 +116,11 @@ def list_documents(
     return {"items": [document_out(d) for d in rows]}
 
 
-@router.post("/documents", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/documents",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limited("documents.upload"))],
+)
 async def upload_document(
     file: UploadFile = File(...),
     folder: str = Form(default="Inbox"),

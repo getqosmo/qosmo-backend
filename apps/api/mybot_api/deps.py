@@ -42,14 +42,17 @@ from mybot_security.hardware.presence import (
     SimulatedPresenceProvider,
 )
 from mybot_security.logging import get_logger
+from mybot_security.ratelimit import RateLimiter
 from mybot_security.vault import Vault, VaultAuditHook
 from mybot_services.action_firewall.service import ActionFirewall
 from mybot_services.audit.service import AuditService
+from mybot_services.automations.engine import AutomationEngine
 from mybot_services.brief.service import BriefService
 from mybot_services.document_ingestion.service import DocumentIngestionService
 from mybot_services.inbox.service import InboxService
 from mybot_services.life_graph.service import LifeGraphService
 from mybot_services.memory.service import MemoryService
+from mybot_services.notifications.service import NotificationService
 from mybot_services.obligations.service import ObligationService
 from mybot_services.policy.service import PolicyService
 from mybot_services.proactive.engine import ProactiveEngine
@@ -79,6 +82,81 @@ def get_registry() -> IntegrationRegistry:
 @lru_cache(maxsize=1)
 def get_router() -> ModelRouter:
     return default_router()
+
+
+@lru_cache(maxsize=1)
+def get_rate_limiter() -> RateLimiter:
+    # Disabled under test so the suite is not throttled by its own volume.
+    return RateLimiter(enabled=get_settings().env != "test")
+
+
+def client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def enforce_rate_limit(
+    bucket: str,
+    *,
+    request: Request,
+    owner_id: str | None = None,
+    identifier: str | None = None,
+    cost: float = 1.0,
+) -> None:
+    """Raise 429 when a bucket is exhausted.
+
+    The response carries ``Retry-After`` so a well-behaved client waits rather
+    than retrying into the wall, and the message is written for a person who
+    mistyped their password, not for a log.
+    """
+    result = get_rate_limiter().check(
+        bucket, owner_id=owner_id, client_ip=client_ip(request), identifier=identifier, cost=cost
+    )
+    if result.allowed:
+        return
+    log.warning(
+        "ratelimit.exceeded",
+        bucket=bucket,
+        retry_after=result.retry_after_seconds,
+        authenticated=bool(owner_id),
+    )
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=result.limit.message,
+        headers={"Retry-After": str(int(result.retry_after_seconds) + 1)},
+    )
+
+
+def clear_rate_limit(
+    bucket: str,
+    *,
+    request: Request | None = None,
+    owner_id: str | None = None,
+    identifier: str | None = None,
+) -> None:
+    """Reset a bucket after the caller proved they are legitimate.
+
+    Resolved through ``get_rate_limiter()`` here rather than by a caller
+    holding its own reference, so there is exactly one limiter instance in play
+    and substituting it works.
+    """
+    get_rate_limiter().clear(
+        bucket,
+        owner_id=owner_id,
+        client_ip=client_ip(request) if request is not None else None,
+        identifier=identifier,
+    )
+
+
+def rate_limited(bucket: str, cost: float = 1.0):
+    """Dependency factory for authenticated endpoints."""
+
+    def _dependency(request: Request, principal: Principal = Depends(get_principal)) -> None:
+        enforce_rate_limit(bucket, request=request, owner_id=principal.owner_id, cost=cost)
+
+    return _dependency
 
 
 @lru_cache(maxsize=1)
@@ -273,6 +351,8 @@ class ServiceBundle:
     sync: ConnectorSync
     security: SecurityCenterService
     documents: DocumentIngestionService
+    notifications: NotificationService
+    automations: AutomationEngine
     registry: IntegrationRegistry
     router: ModelRouter
     vault: Vault
@@ -304,6 +384,8 @@ def get_services(
         sync=ConnectorSync(db, registry, audit),
         security=SecurityCenterService(db, policy=policy, firewall=firewall, audit=audit),
         documents=DocumentIngestionService(db, vault, audit=audit, graph=graph),
+        notifications=NotificationService(db, audit),
+        automations=AutomationEngine(db, firewall, policy=policy, audit=audit),
         registry=registry,
         router=get_router(),
         vault=vault,
@@ -334,6 +416,11 @@ def utc_today() -> str:
 
 __all__ = [
     "Principal",
+    "clear_rate_limit",
+    "client_ip",
+    "enforce_rate_limit",
+    "get_rate_limiter",
+    "rate_limited",
     "ServiceBundle",
     "coverage_from_sync",
     "get_config",

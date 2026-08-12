@@ -108,3 +108,45 @@ path either.
 |---|---|
 | `GET /api/v1/account/export` | Complete JSON: graph, memories, obligations, documents, actions, audit |
 | `POST /api/v1/account/data/delete` | Requires STRONG and the phrase `DELETE MY DATA` |
+
+## Notifications
+
+| | |
+|---|---|
+| `GET /api/v1/notifications` | `unread_only`, `limit` |
+| `POST /api/v1/notifications/{id}/read` | |
+| `POST /api/v1/notifications/read-all` | |
+
+Notifications are created by the daemon, not by the API. They are deduplicated
+by source record, suppressed during the owner's local quiet hours unless
+CRITICAL, and hard-capped per day.
+
+## Automations
+
+| | |
+|---|---|
+| `GET /api/v1/automations` | Includes `available_triggers` |
+| `POST /api/v1/automations` | `trigger_type` must be one of the fixed list; `action_type` must be registered |
+| `PATCH /api/v1/automations/{id}?enabled=` | |
+| `DELETE /api/v1/automations/{id}` | |
+| `POST /api/v1/automations/run` | Run now. No more authority than the scheduled run |
+
+Omitting `action_type` creates a notify-only automation, which is often the
+better choice. An automation with an action still routes it through the Action
+Firewall with `ActorType.AUTOMATION`, so it cannot do anything the owner has
+not permitted.
+
+## Rate limits
+
+Applied to authentication and expensive endpoints. On exhaustion the response
+is `429` with a `Retry-After` header and a message written for a person.
+
+| Bucket | Limit |
+|---|---|
+| `auth.login` | 5 / minute, per address *and* per email |
+| `auth.elevate` | 5 / 5 minutes |
+| `auth.register` | 3 / hour |
+| `chat` | 20 / minute |
+| `actions.propose` | 30 / minute |
+| `documents.upload` | 30 / 5 minutes |
+| reads | 300 / minute |

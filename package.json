@@ -1,0 +1,16 @@
+{
+  "name": "mybot",
+  "private": true,
+  "description": "MyBot — repository tooling. The web app lives in apps/web.",
+  "type": "module",
+  "scripts": {
+    "brand": "node scripts/render-brand.mjs",
+    "smoke": "node scripts/ui-smoke.mjs",
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "web:typecheck": "npm --prefix apps/web run typecheck"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

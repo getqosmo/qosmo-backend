@@ -28,7 +28,9 @@ probing, injection through request bodies.
 
 **Impact.** Full account takeover → A1–A5.
 
-**Mitigations.** Argon2id passwords with a 12-character minimum. Random
+**Mitigations.** Token-bucket rate limiting on authentication: five sign-in
+attempts per minute per address *and* per email, five second-factor attempts
+per five minutes. Argon2id passwords with a 12-character minimum. Random
 256-bit session tokens stored only as hashes. Identical errors and equalised
 timing for unknown-email and wrong-password. Server-side sessions, revocable.
 STRONG elevation required for high-risk operations and expiring on a timer. All
@@ -36,9 +38,12 @@ input validated by Pydantic; the ORM parameterises everything. Explicit CORS
 allowlist, never `*`. Unhandled exceptions return an opaque message plus a
 request id.
 
-**Residual.** No rate limiting or account lockout — a deployment must add
-throttling at the edge. A stolen valid token works until it expires or the
-session is revoked.
+**Residual.** The limiter is in-process, so a multi-node deployment needs a
+shared store before the limits mean anything across replicas. There is no
+permanent account lockout, deliberately: lockout is a denial-of-service vector
+against the legitimate owner, and throttling achieves the same end without
+handing an attacker the ability to lock somebody out of their own life. A
+stolen valid token works until it expires or the session is revoked.
 
 ---
 

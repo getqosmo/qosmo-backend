@@ -877,6 +877,15 @@ class Notification(Base, UUIDPk, OwnedMixin, Timestamped):
     """Something worth pushing to the owner's device."""
 
     __tablename__ = "notifications"
+    __table_args__ = (
+        sa.UniqueConstraint("owner_id", "dedupe_key", name="uq_notification_dedupe"),
+    )
+
+    #: Stable identifier for the underlying thing, so the same renewal noticed
+    #: by both an automation and a proactive rule produces one ping rather than
+    #: two. Nullable, because a genuinely one-off notification has nothing to
+    #: deduplicate against.
+    dedupe_key: Mapped[str | None] = mapped_column(sa.String(300), nullable=True)
 
     title: Mapped[str] = mapped_column(sa.String(200), nullable=False)
     body: Mapped[str] = mapped_column(sa.Text, nullable=False)

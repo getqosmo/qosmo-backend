@@ -14,7 +14,9 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 
 import { ApiError, api, getToken, setToken } from '@/lib/api';
+import { LogoMark, TAGLINE } from './brand';
 import type { Me } from '@/lib/api';
+import { NotificationBell } from './notifications';
 import { Notice, Spinner } from './ui';
 
 const NAV = [
@@ -93,10 +95,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="shell">
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark">M</div>
-            <div>
-              <div className="brand-name">MyBot</div>
-            </div>
+            <LogoMark size={26} />
+            <div className="brand-name">MyBot</div>
           </div>
           <nav className="nav">
             {NAV.map((item) => (
@@ -117,6 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             ))}
           </nav>
+          <NotificationBell />
           <div className="sidebar-footer">
             <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
               {me.display_name}
@@ -171,12 +172,12 @@ function SignIn({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
     <div className="auth-shell">
       <form className="auth-card" onSubmit={submit}>
         <div className="auth-brand">
-          <div className="brand-mark">M</div>
-          <div>
-            <div className="brand-name">MyBot</div>
+          <LogoMark size={34} />
+          <div className="brand-name" style={{ fontSize: 18 }}>
+            MyBot
           </div>
         </div>
-        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Your life. Running itself.</h1>
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>{TAGLINE}</h1>
         <p className="auth-tagline" style={{ marginTop: 8 }}>
           Sign in to your MyBot.
         </p>

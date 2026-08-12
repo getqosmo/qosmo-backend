@@ -44,7 +44,14 @@ from mybot_services.security_center.service import SecurityCenterService
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
-from ..deps import Principal, get_db, get_principal, get_vault
+from ..deps import (
+    Principal,
+    clear_rate_limit,
+    enforce_rate_limit,
+    get_db,
+    get_principal,
+    get_vault,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 log = get_logger(__name__)
@@ -78,6 +85,7 @@ class ElevateIn(BaseModel):
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db)):
     """Create the owner account and its security scaffolding."""
+    enforce_rate_limit("auth.register", request=request)
     settings = get_settings()
     with session_system_scope(db, "registration creates a new owner before any scope exists"):
         existing = db.execute(
@@ -144,6 +152,11 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
 
 @router.post("/login")
 def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
+    # Limited twice: by network, and by the email being tried. The first stops
+    # one host walking a password list; the second stops a distributed attempt
+    # concentrating on one account.
+    enforce_rate_limit("auth.login", request=request)
+    enforce_rate_limit("auth.login", request=request, identifier=payload.email)
     settings = get_settings()
     with session_system_scope(db, "login resolves an account before an owner scope exists"):
         user = db.execute(
@@ -171,6 +184,11 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
 
         if not user.is_active:
             raise INVALID_CREDENTIALS
+
+    # A correct password clears the throttle, so somebody who fat-fingered it
+    # twice does not carry a reduced allowance for the next minute.
+    clear_rate_limit("auth.login", request=request)
+    clear_rate_limit("auth.login", identifier=payload.email)
 
     with session_owner_scope(db, user.id):
         device = None
@@ -220,6 +238,7 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
 @router.post("/elevate")
 def elevate(
     payload: ElevateIn,
+    request: Request,
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ):
@@ -229,6 +248,9 @@ def elevate(
     unlocking after lockdown. The elevation expires on a timer, so it cannot
     be left standing on an unattended device.
     """
+    # The tightest limit in the system. A six-digit code is a million
+    # possibilities; unthrottled, that is minutes of guessing.
+    enforce_rate_limit("auth.elevate", request=request, owner_id=principal.owner_id)
     settings = get_settings()
     user = principal.user
     if not user.strong_auth_ref:
@@ -257,6 +279,7 @@ def elevate(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="That code is not valid."
         )
 
+    clear_rate_limit("auth.elevate", owner_id=principal.owner_id)
     principal.session.auth_level = AuthLevel.STRONG.value
     principal.session.elevated_until = utcnow() + dt.timedelta(
         seconds=settings.strong_auth_ttl_seconds

@@ -178,6 +178,13 @@ world-readable window), `keyring` (OS keychain), `env` (containers/KMS),
 * **No user enumeration.** Unknown email and wrong password return the same
   error, and the unknown-email path burns a dummy Argon2 verification so the
   timing matches.
+* **Throttled.** Token buckets sized to what an endpoint costs to abuse: five
+  sign-in attempts a minute, five second-factor attempts per *five* minutes
+  (a six-digit code is a small space), and generous limits on ordinary reads.
+  Keyed by owner once identity is known and by a *hashed* client address before
+  that — a rate limiter should not quietly become a record of who connected
+  from where. A correct password clears the bucket, so mistyping twice costs
+  nothing.
 
 ---
 
@@ -261,22 +268,29 @@ marketing.
    XSS. Production should move to an httpOnly, SameSite=Strict cookie. The
    token is short-lived and revocable, which limits the damage, not the
    exposure.
-3. **No rate limiting on authentication.** Failed logins are recorded as
-   security events but not throttled. A deployment must add throttling at the
-   edge.
-4. **Google adapters are unverified against live endpoints.** The code paths
+3. **Rate limiting is in-process.** Correct for the single-node Core, but a
+   multi-node deployment needs shared state; ``RateLimitStore`` is an interface
+   with an obvious Redis implementation. It also fails *open* by design (see
+   §5), so a broken limiter degrades to an unthrottled endpoint rather than an
+   outage.
+4. **Login is limited per network as well as per identity.** Two people behind
+   one address share the network bucket. A per-address limit is the only thing
+   available before the caller has proven who they are; the per-identity bucket
+   is what stops one account's guesses eating another's allowance.
+5. **Google adapters are unverified against live endpoints.** The code paths
    are complete and the request shapes target the real APIs, but no OAuth
    credentials existed in this build. Integration mode defaults to `mock` for
    exactly this reason.
-5. **No OCR.** Images are stored encrypted and explicitly report that nothing
+6. **No OCR.** Images are stored encrypted and explicitly report that nothing
    was read from them, rather than silently ingesting nothing.
-6. **Injection detection is pattern-based.** It is a *signal*, not a control —
+7. **Injection detection is pattern-based.** It is a *signal*, not a control —
    the architectural controls apply to all untrusted content regardless. Novel
    phrasings will evade the patterns and change nothing about safety.
-7. **Single-node.** No HA, no replication, no encrypted-backup rotation yet.
-8. **Chat history retention is not yet enforced.** Messages are stored
-   separately from durable memory but no expiry job runs.
-9. **No CSRF tokens.** The API is bearer-token only with an explicit CORS
+8. **Single-node.** No HA, no replication, no encrypted-backup rotation yet.
+9. **Chat history retention is not yet enforced.** Messages are stored
+   separately from durable memory but no expiry job runs. Notifications *are*
+   purged on a schedule by the daemon.
+10. **No CSRF tokens.** The API is bearer-token only with an explicit CORS
    allowlist (never `*`), so cookie-based CSRF does not apply — but a
    cookie-based deployment would need them.
 

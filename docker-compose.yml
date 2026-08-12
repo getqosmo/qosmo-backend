@@ -51,6 +51,27 @@ services:
     command: >
       sh -c "alembic upgrade head && uvicorn mybot_api.main:app --host 0.0.0.0 --port 8000"
 
+  # The proactive loop. Separate from the API so it can be scaled, restarted
+  # or stopped independently -- and so a busy API does not delay a scan.
+  daemon:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYBOT_DATABASE_URL: postgresql+psycopg://mybot:mybot-local-dev-only@db:5432/mybot
+      MYBOT_DATA_DIR: /data
+      MYBOT_PROACTIVE_INTERVAL_SECONDS: ${MYBOT_PROACTIVE_INTERVAL_SECONDS:-300}
+      MYBOT_LLM_DEFAULT_PROVIDER: ${MYBOT_LLM_DEFAULT_PROVIDER:-mock}
+      MYBOT_INTEGRATIONS_MODE: ${MYBOT_INTEGRATIONS_MODE:-mock}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      # Shares the data volume with the API: same Vault key, same documents.
+      - mybot-data:/data
+    command: mybot daemon
+
   web:
     build:
       context: .

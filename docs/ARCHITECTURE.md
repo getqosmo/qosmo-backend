@@ -68,12 +68,30 @@ permitted to authorize.
                     append-only · hash-chained · per owner
 ```
 
-Alongside these, two engines run on their own schedule:
+Alongside these, four components run outside the request cycle:
 
 * **Proactive engine** (`services/proactive`) — deterministic rules over the
   Life Graph and synced connector data, producing Life Inbox cards.
+* **Automations engine** (`services/automations`) — standing instructions with
+  deterministic triggers. Routes every action through the Action Firewall with
+  `ActorType.AUTOMATION`, so it is not a second path to authority.
+* **Notifications** (`services/notifications`) — decides what is worth
+  interrupting someone for, by arithmetic rather than judgement.
 * **Brief service** (`services/brief`) — renders the morning brief and the
   "what do I need to worry about?" report from structured records.
+
+The **daemon** (`apps/core/mybot_core/daemon.py`) drives the first three on a
+schedule:
+
+```
+    per owner, per tick, each in its own transaction:
+    sync connectors → proactive scan → automations → notify → housekeeping
+```
+
+It adds no authority. It calls the same engines through the same firewall, so
+it cannot do anything a user-triggered scan could not — which is why a locked
+owner is skipped at the top of the loop rather than processed and refused
+later.
 
 ---
 

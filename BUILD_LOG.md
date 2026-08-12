@@ -244,15 +244,103 @@ Stated here rather than buried, and expanded in `SECURITY.md` §9.
 
 ---
 
+## Increment 2 — proactive, automations, brand
+
+### What was completed
+
+**Brand system.** An SVG mark that reads as an *M* and as a roofline (MyBot
+lives in your home) with a dot for the Core. Rendered inline as a React
+component rather than loaded as an image, so it inherits `currentColor` and
+adapts to light and dark without shipping two files. Favicon, PWA manifest,
+Apple touch icon and a link-preview card, rasterised from the SVGs by
+`scripts/render-brand.mjs` using the Chromium that Playwright already provides
+rather than adding an image dependency. `apps/web/public/brand/README.md`
+documents the drop-in path for replacement artwork.
+
+*Note:* the message said ChatGPT had made logos, but no files were attached or
+present in the repository. The slot is built and documented; dropping in the
+real files is a five-minute change with no code involved.
+
+**Rate limiting.** Closes the gap earlier builds listed as a known weakness.
+Cost-shaped token buckets: five sign-in attempts a minute, five second-factor
+attempts per *five* minutes (a six-digit code is a small space), generous
+limits on reads. Keyed by owner once identity is known and by a *hashed* client
+address before that — a rate limiter should not quietly become a record of who
+connected from where. A correct password clears the bucket. Deliberately fails
+*open*, which is the opposite of the rule everywhere else in MyBot: a limiter
+is an availability control, and if it breaks the right answer is to let the
+request through and let the real authorization checks work, not to lock
+somebody out of their own life.
+
+**The proactive daemon.** Until now the proactive engine only ran when somebody
+opened the app, which made "MyBot notices things" quietly untrue — it noticed
+things *while you were looking*. `mybot daemon` is the process that runs on the
+Core. Each owner is processed in its own transaction so one failure does not
+stop the others; locked owners are skipped before any outbound call; SIGTERM is
+handled so a container stop is graceful. It adds **no authority** — same
+engines, same firewall — and a test asserts that by giving it the most
+permissive possible setup and confirming nothing executes.
+
+**Automations.** Deterministic triggers over stored data; an automation cannot
+be "whenever it seems important". Every one runs through the Action Firewall
+with `ActorType.AUTOMATION`, so the worst a misconfigured automation produces
+is a queue of proposals the owner declines. Trigger types are a fixed list,
+because a trigger is a query and arbitrary user-supplied queries are a bad
+idea.
+
+**Notifications.** The table had existed since the first commit with nothing
+writing to it. Now: a priority threshold, deduplication by source, quiet hours
+in the owner's own timezone, and a hard daily cap. An assistant that interrupts
+you about everything is worse than one that interrupts you about nothing.
+
+### Findings
+
+**12. Notifications had no dedupe key, and `notify()` silently ignored its
+`source` argument.** So an automation and a proactive rule that noticed the
+same subscription renewal both fired — visible immediately in the first real
+daemon run, which produced five notifications where four were correct. Fixed
+properly: a `dedupe_key` column with a per-owner unique constraint, keyed on
+the underlying *source record* so both routes agree on what "the same thing"
+means. Second migration, which also demonstrated the migration path works for
+a change rather than only for initial creation.
+
+**13. Next.js `next start` serves dead chunk references after a rebuild.** Not
+a MyBot bug, but it cost real debugging time twice: the page renders (static
+HTML) and never hydrates, so the UI looks fine and no button works. Noted in
+`docs/DEVELOPMENT.md`.
+
+### Decisions
+
+**The daemon adds no authority, deliberately.** It would have been easy to let
+a background process execute LOW-risk actions directly, and it would have been
+wrong: the whole security model rests on there being exactly one path outward.
+The daemon calls the same firewall as a user request.
+
+**Notification restraint is arithmetic, not taste.** Thresholds, dedupe keys,
+quiet hours and a daily cap — no model decides what is worth interrupting
+someone for. A model asked to be tasteful is a model that will occasionally be
+tasteless at 3am.
+
+**Rate limiting fails open.** Stated again because it is the one place MyBot
+deliberately breaks its own fail-closed rule, and that asymmetry should be
+obvious to whoever reads this next.
+
+**In-process limiter rather than Redis.** The Core is a single-node appliance
+in someone's home; a Redis dependency there would be absurd. `RateLimitStore`
+is an interface with an obvious second implementation for a multi-node
+deployment.
+
+---
+
 ## Next steps
 
 Immediate, in order:
 
 1. Wire the Google OAuth consent flow and verify the adapters against live
    endpoints. Everything else about those integrations is ready.
-2. Background scheduler process for the proactive engine.
-3. Rate limiting and httpOnly cookie sessions — both small, both listed as
-   known weaknesses.
+2. Notification delivery transports — push and email. The model and the
+   restraint logic are in place; only the transports are missing.
+3. httpOnly cookie sessions, and server-sent events so the UI stops polling.
 4. Local model support via Ollama, which is what makes `PERSONAL`+ context
    viable without leaving the machine.
 5. Encrypted backup with a real recovery design.

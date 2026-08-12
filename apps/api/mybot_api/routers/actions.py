@@ -22,7 +22,14 @@ from mybot_schemas.enums import ActorType, AuthLevel
 from mybot_services.action_firewall.service import ActionRejected, ProposalRequest
 from pydantic import BaseModel
 
-from ..deps import Principal, ServiceBundle, get_presence_provider, get_principal, get_services
+from ..deps import (
+    Principal,
+    ServiceBundle,
+    get_presence_provider,
+    get_principal,
+    get_services,
+    rate_limited,
+)
 from ..serializers import action_out, action_summary
 
 router = APIRouter(prefix="/api/v1/actions", tags=["actions"])
@@ -121,7 +128,11 @@ def get_action(
     return payload
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limited("actions.propose"))],
+)
 def propose(
     payload: ProposeIn,
     principal: Principal = Depends(get_principal),

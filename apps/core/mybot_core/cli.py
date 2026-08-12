@@ -9,6 +9,7 @@ Commands::
     mybot init          create the database schema
     mybot demo          reset and seed a full demo owner
     mybot serve         run the API
+    mybot daemon        run the proactive loop continuously
     mybot scan          run one proactive pass for every owner
     mybot brief         print today's brief
     mybot verify-audit  check every owner's audit chain
@@ -132,6 +133,26 @@ def cmd_serve(args) -> int:
         reload=args.reload,
         log_config=None,
     )
+    return 0
+
+
+def cmd_daemon(args) -> int:
+    """Run the proactive loop until interrupted.
+
+    This is the process that makes MyBot proactive rather than
+    reactive-when-opened. On the Core it runs continuously in the home.
+    """
+    from mybot_core.daemon import ProactiveDaemon
+
+    create_all()
+    daemon = ProactiveDaemon(registry=_registry(), interval_seconds=args.interval)
+    print(BANNER)
+    print(f"  Proactive loop every {daemon.interval}s. Ctrl-C to stop.\n")
+    if args.once:
+        result = daemon.tick()
+        print(f"  {result.as_dict()}")
+        return 0
+    daemon.run_forever()
     return 0
 
 
@@ -262,6 +283,11 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true")
     serve.set_defaults(func=cmd_serve)
+
+    daemon = sub.add_parser("daemon", help="run the proactive loop continuously")
+    daemon.add_argument("--interval", type=int, default=None, help="seconds between passes")
+    daemon.add_argument("--once", action="store_true", help="run a single pass and exit")
+    daemon.set_defaults(func=cmd_daemon)
 
     sub.add_parser("scan", help="run one proactive pass").set_defaults(func=cmd_scan)
     sub.add_parser("brief", help="print today's brief").set_defaults(func=cmd_brief)

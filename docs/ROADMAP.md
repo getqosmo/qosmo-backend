@@ -5,21 +5,27 @@
 Life Graph · memory · Life Inbox · morning brief · document ingestion ·
 simulated calendar and email · action proposals with approval · policy engine ·
 Action Firewall · hash-chained audit · Vault · lockdown · Security Center ·
-grounded chat · 210 tests.
+grounded chat.
 
-## V0.2 — Automations and real connectors
+**Delivered since the first cut**: the proactive daemon (MyBot notices things
+while you are *not* looking, which is what "proactive" has to mean), the
+automations engine, notifications with restraint built in, rate limiting and
+brute-force protection, and the brand system.
+
+## V0.2 — Real connectors
 
 * Google OAuth flow wired end to end; Calendar and Gmail verified against live
   endpoints (the adapters exist; the consent flow does not).
-* Automations that act on LOW-risk actions within explicit standing grants.
 * Subscription intelligence: detect renewals from transactions rather than only
   from stored entities.
 * Travel awareness: flights, check-ins, travel time between calendar events.
 * Local model support via Ollama, making `PERSONAL`+ context viable without
   leaving the machine.
 * OCR for scanned documents.
+* Push and email notification channels — the model and the restraint logic are
+  in place; only the delivery transports are missing.
+* Server-sent events so the UI stops polling for notifications.
 * Chat history retention enforcement.
-* Rate limiting and account lockout.
 * httpOnly cookie sessions.
 
 ## V0.3 — Reach

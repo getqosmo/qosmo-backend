@@ -56,11 +56,18 @@ and zero outbound network calls.
 Other commands:
 
 ```bash
+mybot daemon         # the proactive loop — this is what makes MyBot proactive
 mybot worry          # "what do I need to worry about?" in the terminal
 mybot brief          # today's brief
 mybot scan           # run one proactive pass
 mybot verify-audit   # verify every owner's audit hash chain
 ```
+
+`mybot daemon` is the process that runs on the Core in your home. Each pass it
+syncs connectors, runs the proactive rules, evaluates your automations, and
+notifies you about anything that clears the bar. It adds **no authority**: it
+runs the same engines the API runs, through the same firewall, so it cannot do
+anything a user-triggered scan could not.
 
 ---
 
@@ -89,6 +96,17 @@ Every answer carries the record ids it came from.
 **Action proposals.** MyBot prepares; you approve. The approval sheet shows the
 subject, the before and after, the reason, who asked, the risk class and
 whether it can be undone.
+
+**Automations.** Standing instructions — *tell me three days before a
+subscription renews*. Deterministic triggers over stored data; an automation
+cannot be "whenever it seems important". Every one runs through the same policy
+engine as everything else, so the worst a misconfigured automation produces is
+a queue of proposals you decline.
+
+**Notifications, with restraint.** A threshold, deduplication by source, quiet
+hours in your timezone, and a hard daily cap. An assistant that interrupts you
+about everything is worse than one that interrupts you about nothing, because
+you stop reading it. None of that is a model being tasteful; it is arithmetic.
 
 **Security Center.** A first-class surface where "what can MyBot currently do?"
 is answerable in seconds.
@@ -146,11 +164,14 @@ Honesty about a V0.1 matters more than a long feature list.
 |---|---|
 | Life Graph, memory, obligations, inbox, brief | Real, tested |
 | Policy engine, Action Firewall, audit chain, Vault, lockdown | Real, tested |
+| Proactive daemon, automations, notifications | Real, tested |
+| Rate limiting / brute-force protection | Real, tested. In-process (single-node) |
 | Prompt-injection defences | Real, architectural, tested adversarially |
 | Document ingestion (PDF + text) | Real. **No OCR** — images are stored and say so |
 | Calendar & email connectors | **Simulated by default.** Realistic fixtures |
 | Google Calendar / Gmail adapters | Code complete, **not verified against live Google**. OAuth flow not wired |
 | Model providers | Mock (default), Anthropic, OpenAI, local/Ollama |
+| Notification delivery | In-app only. Push and email transports are not built; the model and the restraint logic are |
 | Payments, taxes, government filing | **Deliberately not implemented.** The registry, policy and approval UI exist; the adapter returns FAILED, never success |
 | MyBot Core hardware | Interfaces exist with software stand-ins that label themselves as simulations |
 
@@ -171,24 +192,27 @@ Nothing in this build fakes a completed integration. A simulated result says
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, testing, project layout, adding an action or connector |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | V0.2 → V1 and the hardware Core |
 | [`BUILD_LOG.md`](BUILD_LOG.md) | What was built, decisions made, concerns, known limitations |
+| [`apps/web/public/brand/README.md`](apps/web/public/brand/README.md) | Brand assets, and how to drop in your own logo |
 
 ---
 
 ## Testing
 
 ```bash
-.venv/bin/pytest                 # 210 tests
+.venv/bin/pytest                 # 268 tests
 .venv/bin/pytest tests/security  # the security suite alone
 .venv/bin/ruff check .
 cd apps/web && npm run typecheck && npm run build
+node scripts/ui-smoke.mjs        # drives a real browser end to end
 ```
 
 The security suite is the interesting part. It asserts, among other things,
 that a malicious email cannot produce a financial action, that one owner cannot
 read another's data through the ORM or the HTTP API, that an approval cannot be
 replayed or have its parameters changed after consent, that lockdown blocks
-work in flight, and that the audit chain detects tampering even with the
-database triggers removed.
+work in flight, that an automation cannot reach an action the owner has not
+permitted, that password and second-factor guessing are throttled, and that the
+audit chain detects tampering even with the database triggers removed.
 
 ---
 

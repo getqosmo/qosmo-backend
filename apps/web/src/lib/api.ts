@@ -382,6 +382,34 @@ export interface ChatAnswer {
   structured: Record<string, unknown> | null;
 }
 
+export interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  urgency: Urgency;
+  channel: string;
+  inbox_item_id: string | null;
+  action_proposal_id: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface Automation {
+  id: string;
+  name: string;
+  description: string | null;
+  trigger_type: string;
+  trigger_config: Record<string, unknown>;
+  action_type: string | null;
+  action_display: string | null;
+  action_risk: Risk | null;
+  notify_only: boolean;
+  enabled: boolean;
+  run_count: number;
+  last_run_at: string | null;
+  created_at: string;
+}
+
 export interface Me {
   id: string;
   email: string;

@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# MyBot local state -- NEVER commit. Contains the local database,
+# vault key material and encrypted secrets.
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+.mybot/
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/*.key
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp

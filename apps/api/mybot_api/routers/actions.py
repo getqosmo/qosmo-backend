@@ -23,7 +23,7 @@ from mybot_services.action_firewall.service import ActionRejected, ProposalReque
 from pydantic import BaseModel
 
 from ..deps import Principal, ServiceBundle, get_presence_provider, get_principal, get_services
-from ..serializers import action_out
+from ..serializers import action_out, action_summary
 
 router = APIRouter(prefix="/api/v1/actions", tags=["actions"])
 
@@ -106,6 +106,7 @@ def get_action(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from None
 
     payload = action_out(proposal)
+    payload["summary"] = action_summary(services.db, principal.owner_id, proposal)
     payload["audit"] = [
         {
             "sequence": e.sequence,
@@ -160,7 +161,9 @@ def propose(
             )
         except LookupError:
             pass
-    return action_out(proposal)
+    payload = action_out(proposal)
+    payload["summary"] = action_summary(services.db, principal.owner_id, proposal)
+    return payload
 
 
 @router.post("/{action_id}/approve")
@@ -210,7 +213,9 @@ def approve(
             detail={"message": str(exc), "reasons": exc.reasons},
         ) from None
 
-    return action_out(proposal)
+    payload = action_out(proposal)
+    payload["summary"] = action_summary(services.db, principal.owner_id, proposal)
+    return payload
 
 
 @router.post("/{action_id}/reject")

@@ -52,7 +52,13 @@ from sqlalchemy.orm import Session
 from ..inbox.service import CardDraft, InboxService
 from ..memory.service import MemoryService
 from ..obligations.service import ObligationService
-from .intel import CLASS_ACTIONABLE, CLASS_IMPORTANT, find_conflicts, missing_location
+from .intel import (
+    CLASS_ACTIONABLE,
+    CLASS_IMPORTANT,
+    find_conflicts,
+    find_free_slot,
+    missing_location,
+)
 
 #: How far ahead deadlines are surfaced.
 DEADLINE_HORIZON_DAYS = 14
@@ -174,16 +180,7 @@ class ProactiveEngine:
             if obligation.consequence:
                 explanation += f" {obligation.consequence}"
 
-            actions: list[dict] = []
-            if obligation.recommended_action_type:
-                actions.append(
-                    {
-                        "label": _action_label(obligation.recommended_action_type),
-                        "action_type": obligation.recommended_action_type,
-                        "requires_approval": True,
-                    }
-                )
-            actions.append({"label": "Mark as done", "action_type": "obligation.complete"})
+            actions = _obligation_actions(obligation)
 
             self._emit(
                 owner_id,
@@ -270,11 +267,12 @@ class ProactiveEngine:
                             evidence=[{"kind": "entity", "id": sub.id, "renews_on": renews_on.isoformat()}],
                             entity_id=sub.id,
                             possible_actions=[
-                                {
-                                    "label": "Cancel subscription",
-                                    "action_type": "subscription.cancel",
-                                    "requires_approval": True,
-                                },
+                                _unavailable_action(
+                                    "Cancel subscription",
+                                    "subscription.cancel",
+                                    "No service-provider integration is connected, so MyBot "
+                                    "cannot cancel this for you yet.",
+                                ),
                                 {"label": "Keep it", "action_type": "inbox.dismiss"},
                             ],
                             recommended_action="Review before it renews",
@@ -313,11 +311,12 @@ class ProactiveEngine:
                             ],
                             entity_id=sub.id,
                             possible_actions=[
-                                {
-                                    "label": "Cancel subscription",
-                                    "action_type": "subscription.cancel",
-                                    "requires_approval": True,
-                                },
+                                _unavailable_action(
+                                    "Cancel subscription",
+                                    "subscription.cancel",
+                                    "No service-provider integration is connected, so MyBot "
+                                    "cannot cancel this for you yet.",
+                                ),
                                 {"label": "I still use it", "action_type": "inbox.dismiss"},
                             ],
                             recommended_action="Decide whether to keep it",
@@ -387,15 +386,9 @@ class ProactiveEngine:
                             "end": second.end_at.isoformat(),
                         },
                     ],
-                    possible_actions=[
-                        {
-                            "label": f"Move “{_movable(first, second, conflict).title}”",
-                            "action_type": "calendar.reschedule",
-                            "requires_approval": True,
-                            "event_id": _movable(first, second, conflict).external_id,
-                        },
-                        {"label": "Leave both", "action_type": "inbox.dismiss"},
-                    ],
+                    possible_actions=_conflict_actions(
+                        _movable(first, second, conflict), events, now, prefs
+                    ),
                     recommended_action=f"Move “{_movable(first, second, conflict).title}”",
                 ),
                 report,
@@ -488,7 +481,13 @@ class ProactiveEngine:
                                 "label": "Draft a reply",
                                 "action_type": "email.draft",
                                 "requires_approval": True,
-                                "message_id": message.external_id,
+                                "available": True,
+                                "params": {
+                                    "to": [message.from_address],
+                                    "subject": _reply_subject(message.subject),
+                                    "body": _reply_stub(sender),
+                                    "in_reply_to": message.external_id,
+                                },
                             },
                             {"label": "Not important", "action_type": "inbox.dismiss"},
                         ],
@@ -608,7 +607,21 @@ class ProactiveEngine:
                             }
                         ],
                         possible_actions=[
-                            {"label": "Add a reminder", "action_type": "obligation.create"},
+                            {
+                                "label": "Track this deadline",
+                                "action_type": "obligation.create",
+                                "requires_approval": True,
+                                "available": True,
+                                "params": {
+                                    "title": (
+                                        f"{(document.document_type or document.filename)}"
+                                        .replace("_", " ").title()
+                                        + " renewal"
+                                    ),
+                                    "due_date": expires.isoformat(),
+                                    "kind": "renewal",
+                                },
+                            },
                             {"label": "Dismiss", "action_type": "inbox.dismiss"},
                         ],
                         recommended_action="Renew before it expires",
@@ -664,6 +677,128 @@ class ProactiveEngine:
             )
         )
         self.session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Action construction
+# ---------------------------------------------------------------------------
+#
+# Cards carry *complete, ready-to-submit* parameters for the actions they
+# offer. The alternative -- letting the client assemble them -- means the
+# browser guessing at a new appointment time or a payee, which is both a
+# correctness problem and a security one: parameters are what an approval is
+# bound to, so they must originate somewhere MyBot controls.
+#
+# An action MyBot cannot actually construct is marked ``available: false`` with
+# a plain reason rather than offered and then failing. Offering "Pay this bill"
+# with no payment method connected is exactly the kind of fake completeness the
+# product must not ship.
+
+
+def _unavailable_action(label: str, action_type: str, reason: str) -> dict:
+    return {
+        "label": label,
+        "action_type": action_type,
+        "requires_approval": True,
+        "available": False,
+        "unavailable_reason": reason,
+    }
+
+
+def _obligation_actions(obligation: Obligation) -> list[dict]:
+    actions: list[dict] = []
+    recommended = obligation.recommended_action_type
+    if recommended in ("utilities.pay", "payment.pay_bill"):
+        actions.append(
+            _unavailable_action(
+                _action_label(recommended),
+                recommended,
+                "MyBot cannot move money in this release. No payment provider is connected.",
+            )
+        )
+    elif recommended:
+        actions.append(
+            {
+                "label": _action_label(recommended),
+                "action_type": recommended,
+                "requires_approval": True,
+                "available": False,
+                "unavailable_reason": "This action is not connected to a service yet.",
+            }
+        )
+    actions.append({"label": "Mark as done", "action_type": "obligation.complete"})
+    return actions
+
+
+def _conflict_actions(movable, events: list, now: dt.datetime, prefs: dict) -> list[dict]:
+    """Offer a concrete new time for the more movable of two clashing events.
+
+    The replacement slot is found by the deterministic scheduler, honouring the
+    owner's stated preference -- "I prefer afternoon appointments" becomes an
+    afternoon slot here, which is the whole point of storing preferences in a
+    machine-usable form.
+    """
+    duration = max(15, int((movable.end_at - movable.start_at).total_seconds() // 60))
+    slot = find_free_slot(
+        events,
+        duration_minutes=duration,
+        search_from=max(now, movable.start_at) + dt.timedelta(days=1),
+        search_until=now + dt.timedelta(days=14),
+        prefer_afternoon=prefs.get("appointment_time_of_day") == "afternoon",
+    )
+    actions: list[dict] = []
+    if slot is not None:
+        actions.append(
+            {
+                "label": f"Move “{movable.title}” to {slot.strftime('%A %-I:%M %p')}",
+                "action_type": "calendar.reschedule",
+                "requires_approval": True,
+                "available": True,
+                "params": {
+                    "event_id": movable.external_id,
+                    "new_start": slot.isoformat(),
+                    "new_end": (slot + dt.timedelta(minutes=duration)).isoformat(),
+                    "calendar_id": movable.calendar_id,
+                },
+                "context": {
+                    "original_start": movable.start_at.isoformat(),
+                    "event_title": movable.title,
+                    "honours_preference": prefs.get("appointment_time_of_day"),
+                },
+            }
+        )
+    else:
+        actions.append(
+            _unavailable_action(
+                f"Move “{movable.title}”",
+                "calendar.reschedule",
+                "MyBot could not find a free slot in the next two weeks.",
+            )
+        )
+    actions.append({"label": "Leave both", "action_type": "inbox.dismiss"})
+    return actions
+
+
+def _reply_subject(subject: str | None) -> str:
+    subject = (subject or "").strip()
+    if not subject:
+        return "Re:"
+    return subject if subject.lower().startswith("re:") else f"Re: {subject}"
+
+
+def _reply_stub(sender: str) -> str:
+    """A short, honest placeholder.
+
+    Deliberately not a model-written reply pretending to be the owner. The
+    draft is a starting point they edit, and the approval sheet shows the exact
+    text before anything is saved.
+    """
+    first = (sender or "there").split()[0].strip(",")
+    return (
+        f"Hi {first},\n\n"
+        "Apologies for the slow reply — coming back to you on this shortly.\n\n"
+        "[MyBot prepared this draft. Edit before sending.]"
+    )
 
 
 def _movable(first, second, conflict):

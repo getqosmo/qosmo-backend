@@ -316,12 +316,17 @@ def find_free_slot(
     day_start_hour: int = 9,
     day_end_hour: int = 17,
     prefer_afternoon: bool = False,
+    weekdays_only: bool = True,
 ) -> dt.datetime | None:
     """First gap that fits, respecting working hours and stated preferences.
 
     Steps in 15-minute increments and honours ``prefer_afternoon`` by trying
     the afternoon window first -- that is how the "I prefer afternoon
     appointments" memory becomes a behaviour rather than a note.
+
+    ``weekdays_only`` defaults to True because the things MyBot reschedules are
+    appointments with businesses. Proposing "your dentist, Saturday at 2pm" is
+    technically a free slot and a useless suggestion.
     """
     busy = sorted(
         [(e.start_at, e.end_at) for e in events if not getattr(e, "cancelled", False)],
@@ -334,6 +339,9 @@ def find_free_slot(
 
     day = search_from.replace(minute=0, second=0, microsecond=0)
     while day < search_until:
+        if weekdays_only and day.weekday() >= 5:
+            day = (day + dt.timedelta(days=1)).replace(hour=0, minute=0)
+            continue
         for start_hour, end_hour in windows:
             cursor = day.replace(hour=start_hour, minute=0)
             day_end = day.replace(hour=end_hour, minute=0)

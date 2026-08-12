@@ -9,6 +9,8 @@ invisible to the API until somebody consciously exposes it.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from mybot_schemas.actions import ACTION_REGISTRY
 from mybot_schemas.models import (
     ActionProposal,
@@ -180,6 +182,80 @@ def action_out(proposal: ActionProposal) -> dict:
     }
 
 
+def action_summary(session, owner_id: str, proposal: ActionProposal) -> dict | None:
+    """A human-readable before/after for the approval sheet.
+
+    Derived here from the proposal's parameters and the records they reference
+    -- never supplied by the client. The approval is bound to a hash of the
+    parameters, so if the *displayed* summary could be set independently, a
+    caller could show one thing and have another happen. Computing it from the
+    same source removes that gap.
+
+    Returns ``None`` when there is nothing meaningful to render, and the UI
+    falls back to the parameter list.
+    """
+    import sqlalchemy as sa
+    from mybot_schemas.models import CalendarEvent
+
+    params = proposal.params or {}
+
+    if proposal.action_type in ("calendar.reschedule", "calendar.cancel"):
+        event = session.execute(
+            sa.select(CalendarEvent).where(
+                CalendarEvent.owner_id == owner_id,
+                CalendarEvent.external_id == params.get("event_id", ""),
+            )
+        ).scalar_one_or_none()
+        if event is None:
+            return None
+        summary = {
+            "kind": "calendar",
+            "subject": event.title,
+            "from_label": "Currently",
+            "from_value": event.start_at.strftime("%A %-d %B, %-I:%M %p"),
+            "location": event.location,
+        }
+        if proposal.action_type == "calendar.reschedule" and params.get("new_start"):
+            moved = dt.datetime.fromisoformat(params["new_start"])
+            summary["to_label"] = "Move to"
+            summary["to_value"] = moved.strftime("%A %-d %B, %-I:%M %p")
+            summary["shift_days"] = abs((moved - event.start_at).days)
+        else:
+            summary["to_label"] = "Change"
+            summary["to_value"] = "Cancelled"
+        return summary
+
+    if proposal.action_type in ("email.draft", "email.send"):
+        return {
+            "kind": "email",
+            "subject": params.get("subject", ""),
+            "to": params.get("to", []),
+            "body": params.get("body", ""),
+        }
+
+    if "amount" in params:
+        return {
+            "kind": "payment",
+            "amount": params.get("amount"),
+            "currency": params.get("currency", "USD"),
+            "payee": params.get("payee") or params.get("destination_ref"),
+            "account_ref": params.get("account_ref"),
+            "memo": params.get("memo") or params.get("invoice_id"),
+        }
+
+    if proposal.action_type == "obligation.create":
+        return {
+            "kind": "obligation",
+            "subject": params.get("title", ""),
+            "from_label": "Due",
+            "from_value": params.get("due_date", ""),
+            "to_label": "Tracked as",
+            "to_value": params.get("kind", "generic"),
+        }
+
+    return None
+
+
 def audit_out(event: AuditEvent) -> dict:
     return {
         "id": event.id,
@@ -228,6 +304,7 @@ def document_out(document: Document) -> dict:
 
 __all__ = [
     "action_out",
+    "action_summary",
     "audit_out",
     "document_out",
     "entity_out",

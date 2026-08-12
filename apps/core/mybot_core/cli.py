@@ -14,6 +14,7 @@ Commands::
     mybot brief         print today's brief
     mybot verify-audit  check every owner's audit chain
     mybot worry         print "what do I need to worry about?"
+    mybot learned       what MyBot has learned about you
     mybot backup        write an encrypted backup
     mybot restore       open an encrypted backup
 """
@@ -205,6 +206,51 @@ def cmd_worry(_args) -> int:
                         print(f"    • {item['explanation']}")
                     print()
                 print(f"  {report['closing']}\n")
+    return 0
+
+
+def cmd_learned(args) -> int:
+    """Print what MyBot has worked out about its owner.
+
+    Exists as a terminal command and not only as an API because "what does this
+    thing believe about me?" should be answerable without running a web app and
+    trusting its rendering.
+    """
+    from mybot_services.learning import LearningService
+
+    with session_scope() as session:
+        for owner_id in _all_owner_ids(session):
+            if args.owner and owner_id != args.owner:
+                continue
+            with session_owner_scope(session, owner_id):
+                report = LearningService(session).growth_report(owner_id)
+                print(f"\n  {owner_id[:8]}  ·  learning for {report['days_learning']} days")
+                print(
+                    f"  {report['learned_count']} learned · "
+                    f"{report['applied_count']} applied · "
+                    f"{report['quarantined_count']} quarantined · "
+                    f"{report['muted_count']} muted\n"
+                )
+                if not report["by_kind"]:
+                    print("  Nothing yet. MyBot learns by watching what you do.\n")
+                    continue
+                for rows in report["by_kind"].values():
+                    print(f"  {rows[0]['label']}")
+                    for row in rows:
+                        if row["quarantined"]:
+                            mark = "!"  # noticed, never acted on
+                        elif row["muted"]:
+                            mark = "-"
+                        elif row["applied"]:
+                            mark = "*"
+                        else:
+                            mark = " "
+                        evidence = f"{row['evidence_count']}"
+                        if row["contradiction_count"]:
+                            evidence += f"/{row['evidence_count'] + row['contradiction_count']}"
+                        print(f"    {mark} {row['explanation']}  ({evidence}x, {row['confidence']})")
+                    print()
+                print("    * applied   - muted   ! learned from outside you, never applied\n")
     return 0
 
 
@@ -464,6 +510,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify-audit", help="verify audit chain integrity").set_defaults(
         func=cmd_verify_audit
     )
+
+    learned = sub.add_parser("learned", help="what MyBot has learned about you")
+    learned.add_argument("--owner", help="restrict to one owner id")
+    learned.set_defaults(func=cmd_learned)
 
     backup = sub.add_parser("backup", help="write an encrypted backup")
     backup.add_argument("output", help="path to write the archive to")

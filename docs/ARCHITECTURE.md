@@ -260,6 +260,69 @@ The mapping lives in the Vault and never leaves.
 prompt *hash* — never the prompt or the completion. A table full of prompts is
 a second copy of the user's life in a place nobody classified as sensitive.
 
+### Sovereign mode
+
+`MYBOT_SOVEREIGN=true` is the absolute form of the same control: no model call
+leaves the machine, at any classification, for any purpose.
+
+It is deliberately *separate* from the classification ceiling rather than being
+its maximum setting. A ceiling is a graduated judgement — it asks "is this
+particular payload too sensitive to send?" — and every judgement is a chance to
+be wrong. Sovereign mode declines to make the judgement. It is the setting for
+somebody who does not want to audit a classifier's decisions for the rest of
+their life, and it is the default on Core hardware.
+
+Enforced in two places: provider **selection** never picks a remote provider,
+and the egress guard refuses the call. Either alone would work today; a control
+with a single enforcement point is one refactor away from decorative.
+
+---
+
+## Learning: what makes one MyBot somebody's own
+
+Every MyBot ships identical. What diverges is `learned_preferences` — an
+accumulating, private record of how one specific person actually behaves. This
+is the closest thing MyBot has to an individual identity, and it is why a
+backup is worth keeping: entities and emails re-sync from their sources, but a
+decade of corrections re-syncs from nowhere.
+
+Four properties, each ruling out an easier implementation:
+
+**Deterministic.** No model decides what MyBot has learned about you.
+Observations are counted; agreement ratios and thresholds are declared in
+`mybot_services.learning.kinds`. A model asked "what has this user taught you?"
+will confabulate a plausible answer, and a confabulated belief about a person is
+indistinguishable from a real one until it causes harm.
+
+**Closed vocabulary.** The set of things MyBot may conclude about someone is a
+fixed table. An open-ended one is unreviewable — you could not answer "what
+could this thing decide about me?" without reading the whole codebase.
+
+**Never authority.** Each kind declares which surfaces it may influence
+(`phrasing`, `ranking`, `defaults`, `timing`, `suppression`, `suggestion`) and
+`assert_never_authority` runs over the whole table at import time. A kind
+claiming `policy` or `approval` cannot be loaded. This is Rule 2 applied to the
+subsystem that most wants to violate it: *"you approved this nine times, so I'll
+stop asking"* is a permission escalation performed by a statistic. MyBot says
+"you approve these most times — want to make that a rule?" and a human clicks.
+
+**Untrusted learning is quarantined.** An email claiming the owner approves
+wire transfers without confirmation is stored, shown, and never applied. The
+taint is sticky in one direction only, so an attacker cannot land one poisoned
+observation and launder it with honest ones.
+
+The dependency direction carries the boundary. The Action Firewall holds an
+`ObservationSink` — a Protocol with one method and no way to return learned
+state — so authority code can *report* what the owner decided and cannot *ask*
+what was concluded from it. Chat reads learned guidance for phrasing; the
+firewall writes observations; neither direction gives learning any power.
+
+```
+firewall ──writes──▶ learning ──reads──▶ chat (phrasing only)
+    │                    │
+    └── cannot read ─────┘
+```
+
 ---
 
 ## Audit

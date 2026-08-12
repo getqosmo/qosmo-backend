@@ -950,6 +950,88 @@ class ChatMessage(Base, UUIDPk, OwnedMixin, Timestamped):
     action_proposal_ids: Mapped[list] = mapped_column(JSONDict, default=list, nullable=False)
 
 
+class LearnedPreference(Base, UUIDPk, OwnedMixin, Timestamped):
+    """Something MyBot worked out about this owner by watching them.
+
+    This table is the closest thing MyBot has to an individual identity. The
+    model weights are rented and interchangeable; *this* is what makes one
+    installation different from every other one, and it is why a backup is
+    worth having.
+
+    Four properties are load-bearing:
+
+    **Evidence, not vibes.** Every row carries how many times it was observed,
+    when it was first and last seen, and the ids of the records that support
+    it. A preference with three observations is presented differently from one
+    with thirty. Nothing here is a model's opinion about the user.
+
+    **Inspectable and reversible.** The owner can read every row in plain
+    language, correct it, or delete it. A system that learns things about you
+    that you cannot see or change is surveillance, not assistance.
+
+    **Never authority.** A learned preference can shape what MyBot *suggests*
+    and how it phrases things. It can never grant a permission, raise a risk
+    ceiling, or approve an action -- that is Rule 2 applied to learning, and it
+    is enforced in :mod:`mybot_services.learning`, not just documented here.
+    An attacker who successfully poisons this table gets to change MyBot's
+    manners, not its authority.
+
+    **Portable across models.** Nothing here references a provider or a model
+    id. Swap the brain and the individual survives.
+    """
+
+    __tablename__ = "learned_preferences"
+    __table_args__ = (
+        # One row per (kind, subject). Repeated observation increments evidence
+        # rather than accumulating near-duplicate rows that would each look
+        # weakly supported.
+        sa.UniqueConstraint("owner_id", "kind", "subject", name="uq_learned_subject"),
+        sa.Index("ix_learned_owner_kind", "owner_id", "kind"),
+    )
+
+    #: See ``mybot_services.learning.LEARNABLE`` -- a fixed vocabulary, not
+    #: free text, so the set of things MyBot can conclude about someone is
+    #: reviewable in one place.
+    kind: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    #: What the preference is *about*: an action type, a category, an entity.
+    subject: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    #: The learned value. Shape depends on ``kind`` and is validated on write.
+    value: Mapped[dict] = mapped_column(JSONDict, default=dict, nullable=False)
+
+    #: How many independent observations support this.
+    evidence_count: Mapped[int] = mapped_column(sa.Integer, default=1, nullable=False)
+    #: Observations that contradicted it. Kept rather than subtracted, because
+    #: "you did this 9 times out of 10" and "you did this 9 times" are
+    #: different claims and only one of them is honest.
+    contradiction_count: Mapped[int] = mapped_column(sa.Integer, default=0, nullable=False)
+    confidence: Mapped[float] = mapped_column(sa.Float, default=0.0, nullable=False)
+
+    first_observed_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    last_observed_at: Mapped[dt.datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: Ids of the records that support this, capped. Lets the owner ask "why do
+    #: you think that?" and get specific records back rather than a shrug.
+    evidence_refs: Mapped[list] = mapped_column(JSONDict, default=list, nullable=False)
+
+    #: Plain-language sentence shown to the owner. Written by the deterministic
+    #: learner, not by a model, so it cannot drift from what the row says.
+    explanation: Mapped[str] = mapped_column(sa.Text, nullable=False)
+
+    #: The owner switched this off. Kept rather than deleted so the same
+    #: observation does not immediately re-learn it -- being overruled is
+    #: itself a durable thing to know.
+    muted: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
+    #: The owner stated this directly instead of it being inferred. Confirmed
+    #: preferences outrank inferred ones and are never decayed away.
+    confirmed_by_owner: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
+
+    #: Set when learning is derived from content that came from outside the
+    #: owner. Such rows are quarantined: never applied, only shown. This is the
+    #: taint rule from the injection defence, applied to learning.
+    derived_from_untrusted: Mapped[bool] = mapped_column(
+        sa.Boolean, default=False, nullable=False
+    )
+
+
 #: Every model that holds personal data. Used by export, deletion and the
 #: owner-isolation test that walks the registry.
 OWNED_MODELS: tuple[type, ...] = tuple(
@@ -978,6 +1060,7 @@ __all__ = [
     "InboxItem",
     "Integration",
     "LLMRun",
+    "LearnedPreference",
     "Memory",
     "Notification",
     "OWNED_MODELS",

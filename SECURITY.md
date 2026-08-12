@@ -298,6 +298,60 @@ marketing.
 
 ---
 
+## 9a. Learning, and why it holds no power
+
+MyBot accumulates a private record of how its owner behaves (`ARCHITECTURE.md`
+→ Learning). A subsystem whose explicit job is to change future behaviour is the
+most attractive target in the product: an attacker with patience does not want
+to execute one action today, they want to teach the assistant a habit that pays
+out for years.
+
+Four controls, in the order they matter:
+
+1. **Learning cannot grant authority.** Every learnable kind declares the
+   surfaces it may influence, and `assert_never_authority` runs over the whole
+   table at import time. `policy`, `risk`, `approval`, `auth`, `execution`,
+   `audit` and `lockdown` are unclaimable — a kind that names one cannot be
+   loaded. The temptation this exists to refuse is *"you approved this nine
+   times, so I'll stop asking"*, which is a permission escalation performed by a
+   statistic. Note this cuts both ways: a learned **deny** is also refused, even
+   though it errs safe, because today's safe direction is tomorrow's precedent.
+2. **Authority cannot read learned state.** The Action Firewall holds an
+   `ObservationSink` Protocol with exactly one method and no return path. It can
+   report that the owner approved something; it has no way to ask what was
+   concluded. Same technique as keeping `mybot_llm` unable to import the Vault:
+   make the wrong thing unexpressible rather than forbidden.
+3. **Untrusted content cannot teach.** Anything learned from content the owner
+   did not write is stored with `derived_from_untrusted`, shown to the owner,
+   and never applied. The taint is sticky in one direction, so an attacker
+   cannot land one poisoned observation and launder it with honest ones. Only a
+   human confirming the row lifts the quarantine.
+4. **Nothing is model-generated.** Observations are counted and explanations are
+   written by deterministic code, so the sentence the owner reads cannot drift
+   from the evidence the row actually holds.
+
+Everything learned is readable in plain language with its evidence count, and
+correctable, mutable or deletable by the owner. A system that learns things
+about you which you cannot see or change is surveillance, not assistance.
+
+---
+
+## 9b. Sovereign mode
+
+`MYBOT_SOVEREIGN=true` refuses any model call that would leave the machine — at
+any classification, for any purpose. It is separate from the classification
+ceiling on purpose: a ceiling is a graduated judgement, and every judgement is a
+chance to be wrong. Sovereign mode declines to judge.
+
+Enforced at provider **selection** and again at the **egress guard**, because a
+control with one enforcement point is one refactor from decorative. The fallback
+provider is itself local, so a provider outage cannot degrade into an egress.
+
+Off by default only because a fresh clone has no local model and would otherwise
+appear broken. It is the intended default on Core hardware.
+
+---
+
 ## 10. Backup and recovery
 
 Three things exist, and they protect different data.

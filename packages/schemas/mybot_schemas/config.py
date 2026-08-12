@@ -62,6 +62,20 @@ class Settings(BaseSettings):
     pii_tokenization: bool = True
     max_external_classification: Classification = Classification.PERSONAL
 
+    #: Sovereign mode: no model call may leave this machine, at any
+    #: classification, for any purpose.
+    #:
+    #: This is stronger than ``max_external_classification`` and deliberately
+    #: separate from it. The classification ceiling is a *graduated* control --
+    #: it asks "is this particular payload too sensitive to send?", which means
+    #: every send is a judgement that could be wrong. Sovereign mode asks no
+    #: question at all. It is the setting for somebody who does not want to
+    #: audit a classifier's decisions for the rest of their life, and it is the
+    #: default on MyBot Core hardware.
+    #:
+    #: Enforced in the router, not by asking providers to behave.
+    sovereign: bool = False
+
     integrations_mode: str = "mock"
 
     proactive_enabled: bool = True

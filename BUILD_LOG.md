@@ -434,18 +434,159 @@ phrase" from "corrupt file" hands an attacker holding the archive a free oracle.
 
 ---
 
+## Increment 4 — independence, and the part that grows
+
+341 tests (up from 301).
+
+The brief: *"create a baby that is as smart as you and will keep learning —
+INDEPENDENT, each user gets their own that grows with them."*
+
+### The constraint, stated first
+
+Model weights cannot be copied into this repository, by me or by anyone. A
+product promising "your own private frontier-level brain, forever, offline" on
+consumer hardware is selling something that does not exist yet. Saying so was
+the first requirement of building this honestly.
+
+But the premise underneath the request survives the constraint, and is arguably
+stronger without it:
+
+> **The model is a rented, swappable organ. The individual is owned and
+> permanent.**
+
+What makes an installation somebody's *own* after a year is not the weights —
+every user of every product shares those. It is the accumulated private record
+of how one specific person actually behaves. That is buildable, ownable,
+portable across model swaps, and it compounds. So that is what got built.
+
+### Sovereign mode
+
+`MYBOT_SOVEREIGN=true`: no model call leaves the machine, at any classification,
+for any purpose.
+
+Kept deliberately separate from the existing classification ceiling rather than
+being its maximum value. A ceiling is a *graduated judgement* — "is this payload
+too sensitive to send?" — and every judgement is a chance to be wrong. Sovereign
+mode declines to judge. It is the setting for somebody who does not want to
+audit a classifier's decisions for the rest of their life.
+
+Enforced twice: provider selection never picks a remote provider, and the egress
+guard refuses the call. Either would work today. A control with one enforcement
+point is one refactor away from decorative, and this one is a product promise.
+The fallback provider is itself local, so a provider outage cannot quietly
+become an egress — there is a test for exactly that.
+
+### Learning, and the wall around it
+
+New table, `learned_preferences`, and a service with four commitments that each
+rule out an easier implementation:
+
+**Deterministic.** No model decides what MyBot has learned about you.
+Observations are counted; thresholds are declared. This is not modesty dressed
+as virtue — a model asked "what has this user taught you?" will confabulate a
+plausible answer, and a confabulated belief *about a person* is
+indistinguishable from a real one until it causes harm. Counting is auditable.
+
+**Closed vocabulary.** A fixed table of things MyBot may conclude. An
+open-ended one cannot be reviewed: you could not answer "what could this thing
+decide about me?" without reading everything and guessing.
+
+**Never authority.** This is the whole design. Each kind declares which surfaces
+it may influence; `assert_never_authority` walks the table at import time and
+refuses to load a kind claiming `policy`, `approval`, `risk`, `auth`,
+`execution`, `audit` or `lockdown`. The sentence it exists to refuse:
+
+> *"You approved this nine times, so I'll stop asking."*
+
+That is a permission escalation performed by a statistic, and it looks
+completely reasonable in a diff. MyBot instead says "you approved this 12 of 13
+times — want to make that a rule?" and a human clicks. Verified end to end: a
+simulated year of use produces the offer and creates zero permission rules.
+
+Worth noting the symmetric case, because it was tempting: a learned **deny** is
+refused too. It errs safe, and it is still learning writing authority. Today's
+safe direction is tomorrow's precedent.
+
+**Untrusted content cannot teach.** Documented as a new threat, T4a. Every
+existing injection control operates on a *proposal*; none of them looks at what
+the system concluded on the way there. An attacker with patience does not want
+one action, they want a habit. So anything learned from content the owner did
+not write is quarantined — shown, never applied — and the taint is sticky in one
+direction, because otherwise the attack is one poisoned observation followed by
+ordinary use laundering it clean.
+
+### Findings
+
+**17. The firewall could have read learned state.** The first wiring passed
+`LearningService` into `ActionFirewall` directly. Nothing used it wrongly, but
+the shape invited `if learned.confidence > 0.9: skip_approval()` and that line
+would have looked sensible in review. Replaced with an `ObservationSink`
+Protocol: one method, no return path, so authority code can report what happened
+and *cannot ask* what was concluded. Same technique that keeps `mybot_llm`
+unable to import the Vault — make it unexpressible, not forbidden.
+
+**18. A learning failure could roll back an approval.** Observing runs inside
+the same transaction as the approval and its audit event. An exception there
+would have discarded a real decision the user had already made. Learning is an
+enhancement; it now fails soft and logs, with a test that a deliberately
+exploding sink cannot break an approval.
+
+**19. Alembic autogenerate omitted its imports again.** Third time — same
+`Text` and `mybot_schemas.db.types` NameError as the previous two migrations. It
+is a template problem, not a one-off, and worth fixing at the source next time
+somebody touches migrations.
+
+### Decisions
+
+**Learned state goes in the export and the backup.** It is the single most
+valuable thing in the file. Entities and emails re-sync from their sources; a
+decade of corrections re-syncs from nowhere. If it were missing, "your MyBot is
+yours" would be false in the only moment that tests the claim. There is a test
+that seals a backup, opens it, and checks the corrections survived with their
+evidence counts.
+
+**Contradictions are kept, not subtracted.** Somebody who approves a thing nine
+times and rejects it once has not taught MyBot nothing — they have taught it
+something with a known exception rate, and collapsing that to a boolean throws
+away the part that should make MyBot cautious. The offer says "12 of 13", not
+"12".
+
+**Confidence multiplies rather than averages.** Agreement × volume × recency, so
+being wrong half the time is not survivable through sheer observation count.
+Tested with 250 agreements and 250 contradictions: still not a preference.
+
+**Corrections apply immediately; inferences decay.** Making somebody repeat a
+correction three times before it sticks is how an assistant becomes
+infuriating. Conversely an inferred preference nobody has re-confirmed in a year
+should not be insisted upon — inferences have a 90-day half-life, stated
+preferences have none.
+
+**No gamification.** No levels, no streak, no "your MyBot is 73% grown". The
+growth report is a transparency feature wearing a friendly hat, and scoring it
+would encourage people to feed it rather than correct it.
+
+---
+
 ## Next steps
 
 Immediate, in order:
 
-1. Wire the Google OAuth consent flow and verify the adapters against live
+1. **A verified local model path.** The `LocalProvider` speaks Ollama and
+   sovereign mode enforces locality, but no local model has been run against
+   this build — there is no GPU here. Until that happens, sovereign mode is a
+   correct control over an unproven capability, and the README says so.
+2. **A UI for the growth report.** Learning is fully exposed over HTTP and has
+   no screen. "Here is what I have worked out about you" is the surface that
+   makes the whole thing trustworthy, and it should not be API-only.
+3. Wire the Google OAuth consent flow and verify the adapters against live
    endpoints. Everything else about those integrations is ready.
-2. Notification delivery transports — push and email. The model and the
+4. Notification delivery transports — push and email. The model and the
    restraint logic are in place; only the transports are missing.
-3. httpOnly cookie sessions, and server-sent events so the UI stops polling.
-4. Local model support via Ollama, which is what makes `PERSONAL`+ context
-   viable without leaving the machine.
-5. Scheduled backups in the daemon, and a reviewed Shamir implementation for
+5. httpOnly cookie sessions, and server-sent events so the UI stops polling.
+6. Scheduled backups in the daemon, and a reviewed Shamir implementation for
    the `scheme` field the wrap format already reserves.
+7. Learn from more signals — which inbox cards get opened, which briefs get
+   read to the end. Each new signal needs a new entry in the closed vocabulary
+   and a decision about which surfaces it may touch, which is the point.
 
 Then V0.2 as described in `docs/ROADMAP.md`.

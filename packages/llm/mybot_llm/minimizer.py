@@ -108,13 +108,31 @@ class ContextMinimizer:
 
 
 def assert_egress_allowed(
-    *, provider_is_local: bool, payload_classification: Classification, ceiling: Classification
+    *,
+    provider_is_local: bool,
+    payload_classification: Classification,
+    ceiling: Classification,
+    sovereign: bool = False,
 ) -> None:
     """Refuse to send over-classified data to a remote model.
 
     Local providers are exempt: the whole point of on-device inference is that
     sensitive context can be used without leaving the house.
+
+    ``sovereign`` is the absolute form of the same control and is checked
+    first. The classification ceiling is a graduated judgement — it asks
+    whether *this* payload is too sensitive — and every judgement is a chance
+    to be wrong. Sovereign mode declines to make the judgement: nothing leaves,
+    at any classification, for any purpose. It is the setting for somebody who
+    does not want to spend the next decade auditing a classifier, and it is the
+    default on Core hardware.
     """
+    if sovereign and not provider_is_local:
+        raise EgressBlocked(
+            "sovereign mode: this MyBot does not send anything to a model it does "
+            "not run itself. Configure a local model, or turn sovereign mode off "
+            "deliberately."
+        )
     if provider_is_local:
         return
     if payload_classification.rank > ceiling.rank:

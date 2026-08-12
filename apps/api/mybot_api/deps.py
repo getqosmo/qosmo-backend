@@ -50,6 +50,7 @@ from mybot_services.automations.engine import AutomationEngine
 from mybot_services.brief.service import BriefService
 from mybot_services.document_ingestion.service import DocumentIngestionService
 from mybot_services.inbox.service import InboxService
+from mybot_services.learning import LearningService
 from mybot_services.life_graph.service import LifeGraphService
 from mybot_services.memory.service import MemoryService
 from mybot_services.notifications.service import NotificationService
@@ -353,6 +354,7 @@ class ServiceBundle:
     documents: DocumentIngestionService
     notifications: NotificationService
     automations: AutomationEngine
+    learning: LearningService
     registry: IntegrationRegistry
     router: ModelRouter
     vault: Vault
@@ -365,7 +367,11 @@ def get_services(
     registry = get_registry()
     audit = AuditService(db)
     policy = PolicyService(db, audit)
-    firewall = ActionFirewall(db, registry, policy=policy, audit=audit)
+    learning = LearningService(db, audit)
+    # The firewall gets the learning service as a write-only sink so approvals
+    # and rejections become evidence. It cannot read learned state back -- see
+    # mybot_services.learning.sink for why that direction is enforced.
+    firewall = ActionFirewall(db, registry, policy=policy, audit=audit, learning=learning)
     graph = LifeGraphService(db, audit)
     vault = get_vault(db)
 
@@ -386,6 +392,7 @@ def get_services(
         documents=DocumentIngestionService(db, vault, audit=audit, graph=graph),
         notifications=NotificationService(db, audit),
         automations=AutomationEngine(db, firewall, policy=policy, audit=audit),
+        learning=learning,
         registry=registry,
         router=get_router(),
         vault=vault,

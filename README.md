@@ -167,6 +167,47 @@ Non-negotiable, and each has tests that fail the build if the property breaks
 
 ---
 
+## Yours, and independent
+
+MyBot is built so that no company — including whoever ships it — is load-bearing
+for it working, and so that what makes it *yours* is something you own outright.
+
+**The model is a rented, swappable organ.** Every provider implements one narrow
+interface; switching a purpose from a cloud model to one running on your own
+hardware is configuration, not a code change. `MYBOT_SOVEREIGN=true` makes that
+absolute: nothing leaves the machine, at any classification, for any purpose.
+Enforced at provider selection *and* at the egress guard.
+
+**What makes it yours is the part nobody else has.** Not the weights — a decade
+of your corrections, your preferences, the patterns MyBot worked out by watching
+what you actually do. That state is deterministic, inspectable, correctable,
+portable across model swaps, and included in every encrypted backup. Entities and
+emails re-sync from their sources; this re-syncs from nowhere, which is exactly
+why it is the thing worth owning.
+
+**And it grows without gaining power.** Learning shapes what MyBot suggests, how
+it ranks things, how it talks to you. It can never grant a permission, raise a
+risk ceiling, or approve anything — every learnable kind declares which surfaces
+it may touch, and the authority surfaces are unclaimable by construction. When
+MyBot notices you have approved something twelve times out of thirteen, it says
+so and offers to make it a rule. **You click the button.** That sentence is the
+whole design:
+
+> *"You approved this nine times, so I'll stop asking"* is a permission
+> escalation performed by a statistic. MyBot does not make it.
+
+```bash
+mybot backup life.mybot      # everything, including what it has learned
+```
+
+Honest limit: this is a per-user *individual*, not a per-user *model*. Nobody
+can hand you private frontier-model weights on consumer hardware today, and a
+product that claims otherwise is lying. What you own is the individual; the
+intelligence is swappable underneath it, which is the part that keeps improving
+without you having to migrate anything.
+
+---
+
 ## What is and is not real
 
 Honesty about a V0.1 matters more than a long feature list.
@@ -178,6 +219,9 @@ Honesty about a V0.1 matters more than a long feature list.
 | Proactive daemon, automations, notifications | Real, tested |
 | Rate limiting / brute-force protection | Real, tested. In-process (single-node) |
 | Prompt-injection defences | Real, architectural, tested adversarially |
+| Per-owner learning (corrections, preferences, growth) | Real, tested. Deterministic, never grants authority |
+| Sovereign mode (nothing leaves the machine) | Real, tested. Needs a local model to be useful |
+| Encrypted backup & recovery | Real, tested. Manual — nothing schedules it |
 | Document ingestion (PDF + text) | Real. **No OCR** — images are stored and say so |
 | Calendar & email connectors | **Simulated by default.** Realistic fixtures |
 | Google Calendar / Gmail adapters | Code complete, **not verified against live Google**. OAuth flow not wired |

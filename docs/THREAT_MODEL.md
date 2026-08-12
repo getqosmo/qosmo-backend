@@ -111,6 +111,52 @@ audited.
 
 ---
 
+## T4a — Long-horizon injection: teaching MyBot a habit
+
+**Path.** The same entry point as T4, but the attacker is not trying to cause an
+action today. They are trying to write to `learned_preferences` — to have MyBot
+conclude, over weeks, that its owner routinely approves transfers, or that a
+particular counterparty is important, or that a category of alert is not worth
+showing. The payoff is not one action; it is a durable change in how MyBot
+behaves for years, arriving as a preference the owner never consciously formed.
+
+This threat is separate from T4 because the mitigations are different. Every T4
+control operates on a *proposal*. None of them looks at what the system
+concluded on the way there.
+
+**Impact.** If unmitigated: an assistant whose judgement has been slowly
+rewritten by whoever sends its owner the most email, with no single event in the
+audit log looking wrong.
+
+**Mitigations.**
+
+* **Quarantine.** Anything learned from content the owner did not write is
+  stored with `derived_from_untrusted` and never applied — not weighted lower,
+  not applied cautiously. Inert.
+* **Sticky taint.** One untrusted observation taints the row permanently.
+  Otherwise the attack is trivial: land one poisoned observation, then let
+  ordinary honest use wash it clean.
+* **Human-only declassification.** The single thing that lifts quarantine is the
+  owner looking at the row and confirming it.
+* **No authority to gain.** Even a *fully successful* poisoning wins only the
+  surfaces learning is allowed to touch — phrasing, ranking, suppression,
+  suggested defaults. The authority surfaces are unclaimable by construction, so
+  there is no path from "MyBot believes something false about me" to "MyBot may
+  now do something it could not do before".
+* **Closed vocabulary.** The attacker cannot invent a new kind of belief; they
+  can only add evidence to a fixed, reviewable list.
+
+**Residual.** An attacker who can generate a lot of owner-*authored*-looking
+signal — for example by provoking the owner into repeatedly approving something
+— still shifts what MyBot suggests and how it ranks things. That is a genuine
+residual, and it is bounded by the same fact as above: it changes MyBot's
+manners, never its authority. Suppression is the sharpest edge available (making
+MyBot quieter about something it should have raised), which is why suppression
+kinds carry the highest evidence thresholds and everything learned is visible in
+`GET /api/v1/learning` for the owner to overrule.
+
+---
+
 ## T5 — LLM behaves incorrectly (no attacker)
 
 **Path.** Hallucinated deadline, misread amount, confidently wrong extraction.

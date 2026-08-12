@@ -46,6 +46,7 @@ from mybot_services.action_firewall.service import ActionFirewall  # noqa: E402
 from mybot_services.audit.service import AuditService  # noqa: E402
 from mybot_services.brief.service import BriefService  # noqa: E402
 from mybot_services.inbox.service import InboxService  # noqa: E402
+from mybot_services.learning import LearningService  # noqa: E402
 from mybot_services.life_graph.service import LifeGraphService  # noqa: E402
 from mybot_services.memory.service import MemoryService  # noqa: E402
 from mybot_services.obligations.service import ObligationService  # noqa: E402
@@ -135,7 +136,10 @@ class Services:
         self.vault = vault
         self.audit = AuditService(db)
         self.policy = PolicyService(db, self.audit)
-        self.firewall = ActionFirewall(db, registry, policy=self.policy, audit=self.audit)
+        self.learning = LearningService(db, self.audit)
+        self.firewall = ActionFirewall(
+            db, registry, policy=self.policy, audit=self.audit, learning=self.learning
+        )
         self.graph = LifeGraphService(db, self.audit)
         self.memory = MemoryService(db, self.audit)
         self.obligations = ObligationService(db, self.audit)

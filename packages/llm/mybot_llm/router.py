@@ -51,9 +51,22 @@ class ModelRouter:
         An unconfigured cloud provider must not turn into a 500 on the user's
         chat request. It falls back to the mock, and the response is labelled
         so the UI can say the answer came from the offline path.
+
+        In sovereign mode a remote provider is never selected in the first
+        place. The egress guard would refuse the call anyway, but a setting
+        whose only enforcement is an exception thrown deep in the stack invites
+        a future code path that forgets to pass through it. Selection and
+        egress both enforce it; neither is load-bearing alone.
         """
         name = self.settings.purpose_provider(purpose.value)
         provider = self._get(name)
+
+        if self.settings.sovereign and provider is not None and not provider.local:
+            log.warning(
+                "llm.sovereign_blocked_provider", requested=name, purpose=purpose.value
+            )
+            provider = None
+
         if provider is not None and provider.available():
             return provider
         if name != "mock":
@@ -86,6 +99,7 @@ class ModelRouter:
             provider_is_local=provider.local,
             payload_classification=request.max_classification,
             ceiling=self.settings.max_external_classification,
+            sovereign=self.settings.sovereign,
         )
 
         run = LLMRun(
@@ -160,6 +174,14 @@ class ModelRouter:
             }
         out["_egress_ceiling"] = self.settings.max_external_classification.value
         out["_pii_tokenization"] = self.settings.pii_tokenization
+        out["_sovereign"] = self.settings.sovereign
+        # Stated as a fact the UI can show without interpreting: is there any
+        # purpose whose model runs somewhere else?
+        out["_fully_local"] = all(
+            entry["local"]
+            for key, entry in out.items()
+            if not key.startswith("_") and isinstance(entry, dict)
+        )
         return out
 
 

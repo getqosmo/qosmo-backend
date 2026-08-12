@@ -68,6 +68,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..audit.service import AuditService
+from ..learning.sink import NullObservationSink, ObservationSink, safely_observe
 from ..policy.engine import PolicyRequest
 from ..policy.service import PolicyService
 
@@ -126,12 +127,17 @@ class ActionFirewall:
         *,
         policy: PolicyService | None = None,
         audit: AuditService | None = None,
+        learning: ObservationSink | None = None,
     ):
         self.session = session
         self.registry = registry
         self.audit = audit or AuditService(session)
         self.policy = policy or PolicyService(session, self.audit)
         self.settings = get_settings()
+        #: Write-only. See ``mybot_services.learning.sink``: the firewall can
+        #: report what the owner decided, and has no way to ask what was
+        #: learned from it. Authority does not read learned state.
+        self.learning: ObservationSink = learning or NullObservationSink()
 
     # ------------------------------------------------------------------
     # Proposal
@@ -379,6 +385,19 @@ class ActionFirewall:
             result="approved",
             details={"approval_id": approval.id, "note": note},
         )
+
+        # Tell the learning system what the owner decided. One-way: this cannot
+        # come back as authority. Untrusted-derived proposals are marked so a
+        # habit cannot be taught by whoever wrote the email that prompted it.
+        safely_observe(
+            self.learning,
+            owner_id,
+            kind="action_approved",
+            subject=proposal.action_type,
+            evidence_ref=proposal.id,
+            untrusted=proposal.derived_from_untrusted,
+        )
+
         return self._execute(proposal, approval=approval)
 
     def reject(
@@ -423,6 +442,27 @@ class ActionFirewall:
             result="rejected",
             details={"note": note},
         )
+
+        # A rejection is evidence twice over: MyBot should stop offering this
+        # kind of thing, and it should stop claiming the owner approves it.
+        safely_observe(
+            self.learning,
+            owner_id,
+            kind="action_rejected",
+            subject=proposal.action_type,
+            evidence_ref=proposal.id,
+            untrusted=proposal.derived_from_untrusted,
+        )
+        safely_observe(
+            self.learning,
+            owner_id,
+            kind="action_approved",
+            subject=proposal.action_type,
+            evidence_ref=proposal.id,
+            agrees=False,
+            untrusted=proposal.derived_from_untrusted,
+        )
+
         return proposal
 
     # ------------------------------------------------------------------

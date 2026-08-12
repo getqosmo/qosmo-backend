@@ -87,6 +87,33 @@ def memory_out(memory: Memory) -> dict:
     }
 
 
+def learned_preference_out(pref) -> dict:
+    """What MyBot has worked out about its owner.
+
+    Everything here is shown to the owner verbatim, so the serialiser exposes
+    the evidence alongside the conclusion. A preference presented without its
+    observation count invites more trust than it has earned.
+    """
+    return {
+        "id": pref.id,
+        "kind": pref.kind,
+        "subject": pref.subject,
+        "value": pref.value or {},
+        "explanation": pref.explanation,
+        "evidence_count": pref.evidence_count,
+        "contradiction_count": pref.contradiction_count,
+        "confidence": round(pref.confidence, 3),
+        "evidence_refs": pref.evidence_refs or [],
+        "muted": pref.muted,
+        "confirmed_by_owner": pref.confirmed_by_owner,
+        # Named "quarantined" rather than the internal column name, because the
+        # owner-facing meaning is "MyBot noticed this but will not act on it".
+        "quarantined": pref.derived_from_untrusted,
+        "first_observed_at": _iso(pref.first_observed_at),
+        "last_observed_at": _iso(pref.last_observed_at),
+    }
+
+
 def obligation_out(obligation: Obligation) -> dict:
     return {
         "id": obligation.id,

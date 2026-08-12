@@ -25,6 +25,7 @@ from mybot_schemas.models import (
     Entity,
     Fact,
     InboxItem,
+    LearnedPreference,
     Memory,
     Obligation,
     Relationship,
@@ -38,6 +39,7 @@ from .serializers import (
     entity_out,
     fact_out,
     inbox_item_out,
+    learned_preference_out,
     memory_out,
     obligation_out,
 )
@@ -109,6 +111,12 @@ def build_export_payload(*, db, audit, owner_id: str, user: User) -> dict:
             }
             for e in _all(EmailMessage)
         ],
+        # The single most valuable thing in this file, and the reason a backup
+        # is worth keeping. Entities and emails can be resynced from their
+        # sources; a decade of learned corrections cannot be resynced from
+        # anywhere. If this key were missing, "your MyBot is yours" would be
+        # false in the only moment that tests it.
+        "learned_preferences": [learned_preference_out(p) for p in _all(LearnedPreference)],
         "actions": [action_out(a) for a in _all(ActionProposal)],
         "audit": [audit_out(e) for e in audit.list_events(owner_id, limit=500)],
         "audit_verification": audit.verify_chain(owner_id).as_dict(),

@@ -143,6 +143,27 @@ better choice. An automation with an action still routes it through the Action
 Firewall with `ActorType.AUTOMATION`, so it cannot do anything the owner has
 not permitted.
 
+## Learning
+
+What MyBot has worked out about you, and your controls over it.
+
+| | |
+|---|---|
+| `GET /api/v1/learning` | Growth report: everything learned, what is applied, what is quarantined |
+| `GET /api/v1/learning/preferences` | `kind`, `applied_only`. Each row carries its evidence count |
+| `GET /api/v1/learning/suggestions` | Standing rules MyBot **offers** to set up |
+| `POST /api/v1/learning/corrections` | `{subject, correction}` — applies immediately, never decays |
+| `POST /api/v1/learning/preferences/{id}/confirm` | "Yes, that's right." Also the only way to lift a quarantine |
+| `POST /api/v1/learning/preferences/{id}/mute` | Stop applying it, keep the observation |
+| `DELETE /api/v1/learning/preferences/{id}` | Hard delete |
+
+Note what has no endpoint: there is no way to turn a learned preference into a
+permission. `/suggestions` returns *offers*, each carrying its evidence and an
+explicit `requires_human_confirmation`. Acting on one means creating a
+permission rule through the Security Center like any other. Learning lives
+here; authority lives there; no request to this router can make one into the
+other. See SECURITY.md §9a.
+
 ## Rate limits
 
 Applied to authentication and expensive endpoints. On exhaustion the response

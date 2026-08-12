@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 from ..action_firewall.service import ActionFirewall
 from ..brief.service import BriefService
 from ..inbox.service import InboxService
+from ..learning import LearningService
 from .tools import AgentTools, ToolResult
 
 log = get_logger(__name__)
@@ -112,6 +113,9 @@ class ChatService:
         self.router = router or ModelRouter()
         self.brief = BriefService(session)
         self.inbox = InboxService(session)
+        # Read-only here, and only for phrasing. Chat reads learned state; the
+        # firewall writes it. Neither direction gives learning any authority.
+        self.learning = LearningService(session)
 
     # ------------------------------------------------------------------
 
@@ -406,6 +410,23 @@ class ChatService:
             )
         )
         context.add_trusted(f"QUESTION: {question}")
+
+        # What MyBot has learned about this person, in its own words. Trusted,
+        # because it is MyBot's own deterministic conclusion from the owner's
+        # own behaviour -- `guidance_for_prompt` has already excluded anything
+        # derived from content the owner did not write, so nothing an email
+        # claimed about them can reach the model with MyBot's voice.
+        #
+        # This is where a decade of use starts to show. It is also capped, so a
+        # long history makes MyBot better rather than more verbose.
+        learned = self.learning.guidance_for_prompt(self.owner_id)
+        if learned:
+            context.add_trusted(
+                "WHAT YOU HAVE LEARNED ABOUT THIS PERSON (respect these; they were "
+                "observed or stated, not guessed):\n"
+                + "\n".join(f"- {line}" for line in learned)
+            )
+
         for result in gathered:
             context.add_trusted(f"TOOL_RESULT {result.name}: {_json(result.items)}")
 

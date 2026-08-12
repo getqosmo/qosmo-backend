@@ -93,12 +93,18 @@ class SoftwareKeyStore(SecureKeyStore):
         return derive_subkey(self._key, purpose, length=length)
 
     def describe(self) -> dict:
+        # Deliberately no file path. This is surfaced in the Security Center
+        # and therefore over the API; the location of the master key is
+        # reconnaissance for an attacker and useless to the owner, who can find
+        # it in the documentation if they need it.
         return {
             "backend": "software",
             "hardware_backed": False,
             "key_version": self.key_version,
-            "location": str(self._path),
-            "note": "Development keystore. Offers no protection against local account compromise.",
+            "note": (
+                "Development keystore: a key file under your data directory. "
+                "Offers no protection against local account compromise."
+            ),
         }
 
 

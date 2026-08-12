@@ -41,3 +41,6 @@ var/
 .idea/
 .vscode/
 *.swp
+
+# Build metadata
+*.egg-info/

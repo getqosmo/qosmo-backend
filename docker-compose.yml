@@ -1,0 +1,67 @@
+# MyBot local stack.
+#
+# Optional. The default profile is SQLite + simulated connectors, which needs
+# no Docker at all -- `mybot demo && mybot serve` is the fast path. This file
+# exists for the Postgres server profile and for running the whole thing in
+# containers.
+#
+# Note there are no secrets here. Everything sensitive comes from .env, and the
+# database password below is a local development value that is never used
+# anywhere real.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mybot
+      POSTGRES_PASSWORD: mybot-local-dev-only
+      POSTGRES_DB: mybot
+    ports:
+      - "5432:5432"
+    volumes:
+      - mybot-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mybot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYBOT_DATABASE_URL: postgresql+psycopg://mybot:mybot-local-dev-only@db:5432/mybot
+      MYBOT_DATA_DIR: /data
+      MYBOT_CORS_ORIGINS: http://localhost:3000
+      # Keep the safe defaults explicit rather than implicit.
+      MYBOT_LLM_DEFAULT_PROVIDER: ${MYBOT_LLM_DEFAULT_PROVIDER:-mock}
+      MYBOT_INTEGRATIONS_MODE: ${MYBOT_INTEGRATIONS_MODE:-mock}
+      MYBOT_JWT_SECRET: ${MYBOT_JWT_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      # The Vault key and encrypted documents live here. Back this up; losing
+      # it loses the Vault.
+      - mybot-data:/data
+    command: >
+      sh -c "alembic upgrade head && uvicorn mybot_api.main:app --host 0.0.0.0 --port 8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+
+volumes:
+  mybot-db:
+  mybot-data:

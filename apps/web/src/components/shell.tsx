@@ -25,6 +25,7 @@ const NAV = [
   { href: '/ask', label: 'Ask' },
   { href: '/life', label: 'Life' },
   { href: '/automations', label: 'Automations' },
+  { href: '/growth', label: 'Growth' },
   { href: '/vault', label: 'Vault' },
   { href: '/security', label: 'Security' },
 ];

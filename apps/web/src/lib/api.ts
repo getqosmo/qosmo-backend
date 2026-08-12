@@ -417,3 +417,66 @@ export interface Me {
   auth_level: string;
   is_demo: boolean;
 }
+
+/**
+ * A thing MyBot worked out about its owner by watching them.
+ *
+ * Note the fields carried alongside the conclusion. A preference shown without
+ * its evidence count invites more trust than it has earned, and `quarantined`
+ * is the difference between "MyBot believes this" and "an email claimed this
+ * and MyBot is showing you rather than acting on it".
+ */
+export interface LearnedPreference {
+  id: string;
+  kind: string;
+  subject: string;
+  value: Record<string, unknown>;
+  explanation: string;
+  evidence_count: number;
+  contradiction_count: number;
+  confidence: number;
+  evidence_refs: string[];
+  muted: boolean;
+  confirmed_by_owner: boolean;
+  quarantined: boolean;
+  first_observed_at: string;
+  last_observed_at: string;
+}
+
+export interface GrowthRow {
+  id: string;
+  subject: string;
+  explanation: string;
+  evidence_count: number;
+  contradiction_count: number;
+  confidence: number;
+  applied: boolean;
+  muted: boolean;
+  confirmed_by_owner: boolean;
+  quarantined: boolean;
+  first_observed: string;
+  last_observed: string;
+  label: string;
+}
+
+export interface GrowthReport {
+  learned_count: number;
+  applied_count: number;
+  quarantined_count: number;
+  muted_count: number;
+  learning_since: string | null;
+  days_learning: number;
+  by_kind: Record<string, GrowthRow[]>;
+  note: string;
+}
+
+export interface LearningSuggestion {
+  kind: string;
+  action_type: string;
+  headline: string;
+  offer: string;
+  evidence_count: number;
+  contradiction_count: number;
+  confidence: number;
+  requires_human_confirmation: boolean;
+}

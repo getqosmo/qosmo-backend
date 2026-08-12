@@ -33,7 +33,7 @@ right shape for that.
 ## Tests
 
 ```bash
-.venv/bin/pytest                    # 268
+.venv/bin/pytest                    # 363
 .venv/bin/pytest tests/security     # the interesting ones
 .venv/bin/pytest tests/evals        # AI behaviour harness
 .venv/bin/ruff check .

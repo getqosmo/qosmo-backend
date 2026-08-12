@@ -132,7 +132,7 @@ class LearningService:
                 first_observed_at=now,
                 last_observed_at=now,
                 evidence_refs=[evidence_ref] if evidence_ref else [],
-                explanation=explanation or _describe(spec, subject, value or {}),
+                explanation=explanation or _describe(spec, subject, value or {}, untrusted),
                 derived_from_untrusted=untrusted,
             )
             self.session.add(row)
@@ -156,7 +156,12 @@ class LearningService:
             # evidence came from outside the owner, the row stays quarantined
             # -- otherwise an attacker lands one poisoned observation and then
             # launders it with trusted ones.
+            became_tainted = untrusted and not row.derived_from_untrusted
             row.derived_from_untrusted = row.derived_from_untrusted or untrusted
+            if became_tainted and not explanation:
+                # The sentence must stop reading as MyBot's own conclusion the
+                # moment the row stops being one.
+                row.explanation = _describe(spec, subject, row.value or {}, True)
 
         row.confidence = self._confidence(row, spec, now)
         self.session.flush()
@@ -447,13 +452,24 @@ class LearningService:
         return round(agreement * volume * recency, 4)
 
 
-def _describe(spec: LearnableKind, subject: str, value: dict) -> str:
+def _describe(spec: LearnableKind, subject: str, value: dict, untrusted: bool = False) -> str:
     """Plain-language explanation, written deterministically.
 
     Not model-generated, so the sentence the owner reads cannot drift from what
     the row actually contains. An explanation that sounds better than the
     evidence justifies is a small lie that compounds.
+
+    Quarantined rows are phrased as a *claim someone else made*, never as
+    MyBot's own conclusion. "You usually approve transfers" and "an email
+    suggested you usually approve transfers" are very different sentences, and
+    printing the first one next to a badge saying MyBot will not act on it
+    invites the reader to believe MyBot believes it. It does not.
     """
+    if untrusted:
+        return (
+            f"Something you did not write suggested this about {subject}. "
+            f"MyBot has not acted on it."
+        )
     if spec.key == "action_rejected":
         return f"You usually turn down {subject}, so MyBot stopped offering it."
     if spec.key == "action_approved":

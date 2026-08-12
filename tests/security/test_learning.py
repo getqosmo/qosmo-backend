@@ -602,3 +602,46 @@ def test_learning_api_cannot_create_a_permission(api, registered):
     rules = api.get("/api/v1/security/permissions", headers=account["headers"])
     if rules.status_code == 200:
         assert rules.json().get("rules", []) == []
+
+
+def test_a_quarantined_row_is_not_phrased_as_mybots_own_belief(db, alice, learning, as_alice):
+    """Caught by looking at the rendered page.
+
+    "You usually approve payment.transfer" printed next to a badge saying MyBot
+    will not act on it invites the reader to believe MyBot believes it. It does
+    not, and the sentence must say so.
+    """
+    row = learning.observe(
+        alice.id, kind="action_approved", subject="payment.transfer", untrusted=True
+    )
+
+    assert "You usually approve" not in row.explanation
+    assert "did not write" in row.explanation
+    assert "not acted on" in row.explanation.lower()
+
+
+def test_the_sentence_changes_when_a_row_becomes_tainted(db, alice, learning, as_alice):
+    """A row that was MyBot's own conclusion and then received untrusted
+    evidence must stop being phrased as one."""
+    row = learning.observe(alice.id, kind="action_approved", subject="email.send")
+    assert "You usually approve" in row.explanation
+
+    row = learning.observe(
+        alice.id, kind="action_approved", subject="email.send", untrusted=True
+    )
+    assert "You usually approve" not in row.explanation
+    assert "did not write" in row.explanation
+
+
+def test_an_explicit_explanation_is_never_overwritten(db, alice, learning, as_alice):
+    learning.observe(
+        alice.id, kind="action_approved", subject="email.send", explanation="Custom wording"
+    )
+    row = learning.observe(
+        alice.id,
+        kind="action_approved",
+        subject="email.send",
+        explanation="Custom wording",
+        untrusted=True,
+    )
+    assert row.explanation == "Custom wording"

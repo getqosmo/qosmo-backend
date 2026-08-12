@@ -152,6 +152,11 @@ class ModelRouter:
             max_classification_sent=request.max_classification.value,
             pii_tokenized=request.tokenized,
             contained_untrusted=request.context.has_untrusted,
+            # Stamped now, not derived later from the provider name. A ledger
+            # whose historical rows change meaning when somebody edits their
+            # config is not a ledger.
+            left_machine=not provider.local,
+            destination=provider.destination(),
         )
 
         try:

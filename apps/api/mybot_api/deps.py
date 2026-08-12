@@ -49,6 +49,7 @@ from mybot_services.audit.service import AuditService
 from mybot_services.automations.engine import AutomationEngine
 from mybot_services.brief.service import BriefService
 from mybot_services.document_ingestion.service import DocumentIngestionService
+from mybot_services.egress import EgressService
 from mybot_services.inbox.service import InboxService
 from mybot_services.learning import LearningService
 from mybot_services.life_graph.service import LifeGraphService
@@ -355,6 +356,7 @@ class ServiceBundle:
     notifications: NotificationService
     automations: AutomationEngine
     learning: LearningService
+    egress: EgressService
     registry: IntegrationRegistry
     router: ModelRouter
     vault: Vault
@@ -393,6 +395,7 @@ def get_services(
         notifications=NotificationService(db, audit),
         automations=AutomationEngine(db, firewall, policy=policy, audit=audit),
         learning=learning,
+        egress=EgressService(db),
         registry=registry,
         router=get_router(),
         vault=vault,

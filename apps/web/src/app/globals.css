@@ -917,3 +917,36 @@ button {
   .notif-trigger span:not(.nav-count) { display: none; }
   .notif-panel { bottom: auto; top: calc(100% + 6px); left: auto; right: 0; }
 }
+
+/*
+ * Secondary navigation.
+ *
+ * The daily surfaces and the "check on MyBot" surfaces are different kinds of
+ * thing, and a flat list of nine makes them look identical. The label and the
+ * lighter weight say "these are here when you want them" without hiding them
+ * behind a menu — the whole point of the trust surfaces is that they are
+ * one click away, not buried in settings.
+ */
+.nav-group-label {
+  margin: 22px 0 6px;
+  padding: 0 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.nav-secondary .nav-link {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.nav-secondary .nav-link[data-active='true'] {
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .nav-group-label { display: none; }
+  .nav-secondary { flex-direction: row; gap: 4px; }
+}

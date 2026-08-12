@@ -231,6 +231,8 @@ Honesty about a V0.1 matters more than a long feature list.
 | Per-owner learning (corrections, preferences, growth) | Real, tested. Deterministic, never grants authority |
 | Sovereign mode (nothing leaves the machine) | Real, tested. Needs a local model to be useful |
 | Encrypted backup & recovery | Real, tested. Manual — nothing schedules it |
+| Egress ledger (everything that left your machine) | Real, tested. Covers model calls; connector syncs are not yet itemised |
+| Marketing site & social kit | `www/`. `npm run social` regenerates the assets |
 | Document ingestion (PDF + text) | Real. **No OCR** — images are stored and say so |
 | Calendar & email connectors | **Simulated by default.** Realistic fixtures |
 | Google Calendar / Gmail adapters | Code complete, **not verified against live Google**. OAuth flow not wired |
@@ -248,6 +250,7 @@ Nothing in this build fakes a completed integration. A simulated result says
 
 | | |
 |---|---|
+| [`docs/POSITIONING.md`](docs/POSITIONING.md) | Why Alexa and Google structurally cannot ship this, and what we must not claim |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Components, boundaries, data flow, the decisions and why |
 | [`SECURITY.md`](SECURITY.md) | Security architecture, secrets model, key management, known limitations |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Thirteen attacker scenarios: asset, path, impact, mitigation, residual risk |

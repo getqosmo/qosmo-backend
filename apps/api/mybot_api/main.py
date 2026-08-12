@@ -24,7 +24,17 @@ from mybot_schemas.db.scope import CrossOwnerAccess, OwnerScopeError
 from mybot_security.logging import configure_logging, get_logger, new_request_id, request_context
 from mybot_security.vault import VaultAccessDenied
 
-from .routers import actions, auth, automations, chat, learning, life, security, today
+from .routers import (
+    actions,
+    auth,
+    automations,
+    chat,
+    egress,
+    learning,
+    life,
+    security,
+    today,
+)
 
 settings = get_settings()
 configure_logging(settings.log_level, json_output=settings.env != "development")
@@ -151,6 +161,7 @@ app.include_router(security.router)
 app.include_router(chat.router)
 app.include_router(automations.router)
 app.include_router(learning.router)
+app.include_router(egress.router)
 
 
 @app.on_event("startup")

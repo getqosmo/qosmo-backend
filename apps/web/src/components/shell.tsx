@@ -6,6 +6,12 @@
  * The nav order is the product's order of importance: TODAY first, chat
  * fourth. MyBot is not a chatbot with a dashboard bolted on, and the
  * navigation should say so.
+ *
+ * It is split into two groups rather than one flat list, because a flat list
+ * of nine is a wall — everything shouts equally and the eye has nowhere to
+ * land. The top four are the surfaces somebody opens daily. The rest are
+ * where you go to *check on* MyBot: what it can do, what it has learned, what
+ * has left the machine. Both matter; only one of them is a daily habit.
  */
 
 import { usePathname, useRouter } from 'next/navigation';
@@ -19,15 +25,21 @@ import type { Me } from '@/lib/api';
 import { NotificationBell } from './notifications';
 import { Notice, Spinner } from './ui';
 
+/** What you open every day. */
 const NAV = [
   { href: '/', label: 'Today' },
   { href: '/inbox', label: 'Inbox' },
   { href: '/ask', label: 'Ask' },
   { href: '/life', label: 'Life' },
-  { href: '/automations', label: 'Automations' },
-  { href: '/growth', label: 'Growth' },
-  { href: '/vault', label: 'Vault' },
-  { href: '/security', label: 'Security' },
+];
+
+/** Where you go to check on MyBot rather than to use it. */
+const NAV_TRUST = [
+  { href: '/security', label: 'What it can do' },
+  { href: '/growth', label: 'What it has learned' },
+  { href: '/egress', label: 'What has left' },
+  { href: '/automations', label: 'Standing rules' },
+  { href: '/vault', label: 'Documents & keys' },
 ];
 
 interface SessionValue {
@@ -115,6 +127,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {item.href === '/inbox' && pending > 0 ? (
                   <span className="nav-count">{pending}</span>
                 ) : null}
+              </Link>
+            ))}
+          </nav>
+          <div className="nav-group-label">Keeping MyBot honest</div>
+          <nav className="nav nav-secondary">
+            {NAV_TRUST.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="nav-link"
+                data-active={pathname.startsWith(item.href)}
+              >
+                <span>{item.label}</span>
               </Link>
             ))}
           </nav>

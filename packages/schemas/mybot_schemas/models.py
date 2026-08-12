@@ -929,6 +929,22 @@ class LLMRun(Base, UUIDPk, OwnedMixin, Timestamped):
     contained_untrusted: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
     schema_valid: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
 
+    #: Did this call physically leave the machine?
+    #:
+    #: Recorded at the time of the call rather than derived later from the
+    #: provider name, because the answer must not change when somebody edits
+    #: their configuration. A ledger whose historical rows re-interpret
+    #: themselves is not a ledger.
+    #:
+    #: **NULL means unknown**, not "no". Rows written before the ledger existed
+    #: genuinely have no answer, and backfilling them with ``False`` would make
+    #: the ledger claim nothing left during a period it has no record of. "We
+    #: have no record" and "nothing happened" are different sentences, and a
+    #: privacy ledger that conflates them is worth nothing.
+    left_machine: Mapped[bool | None] = mapped_column(sa.Boolean, default=False, nullable=True)
+    #: Where it went, as a hostname. Null when nothing left, or unknown.
+    destination: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+
 
 class ChatMessage(Base, UUIDPk, OwnedMixin, Timestamped):
     """Conversation history.

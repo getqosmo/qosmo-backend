@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "brand": "node scripts/render-brand.mjs",
+    "social": "node scripts/render-social.mjs",
     "smoke": "node scripts/ui-smoke.mjs",
     "web:dev": "npm --prefix apps/web run dev",
     "web:build": "npm --prefix apps/web run build",

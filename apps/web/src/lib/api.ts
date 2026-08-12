@@ -480,3 +480,35 @@ export interface LearningSuggestion {
   confidence: number;
   requires_human_confirmation: boolean;
 }
+
+/** One thing that left (or stayed on) your machine. */
+export interface EgressEvent {
+  id: string;
+  at: string;
+  /** null means this predates the ledger — render as "unknown", never "stayed". */
+  left_machine: boolean | null;
+  destination: string | null;
+  what: string;
+  model: string;
+  sent: string;
+  classification: string;
+  identifiers_masked: boolean;
+  included_outside_content: boolean;
+  outcome: string;
+  status: string;
+  prompt_fingerprint: string;
+  tokens_sent: number | null;
+}
+
+export interface EgressLedger {
+  window_days: number;
+  since: string;
+  total_events: number;
+  left_machine: number;
+  stayed_local: number;
+  unknown: number;
+  destinations: { host: string; count: number }[];
+  nothing_left: boolean;
+  events: EgressEvent[];
+  note: string;
+}

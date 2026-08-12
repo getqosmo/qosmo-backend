@@ -78,6 +78,15 @@ class LLMProvider(ABC):
     #: sensitive context may be included at all.
     local: bool = False
 
+    def destination(self) -> str | None:
+        """Hostname this provider sends to, or None when nothing leaves.
+
+        Surfaced to the owner in the egress ledger. "A model call happened"
+        and "your data went to api.openai.com" are different facts, and only
+        the second one answers the question people actually have.
+        """
+        return None
+
     @abstractmethod
     def complete(self, request: LLMRequest) -> LLMResponse:
         ...

@@ -24,6 +24,7 @@ class AnthropicProvider(LLMProvider):
     name = "anthropic"
     local = False
     API_URL = "https://api.anthropic.com/v1/messages"
+    HOST = "api.anthropic.com"
     API_VERSION = "2023-06-01"
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
@@ -36,6 +37,9 @@ class AnthropicProvider(LLMProvider):
 
     def model_id(self) -> str:
         return self._model
+
+    def destination(self) -> str:
+        return self.HOST
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         if not self.available():
@@ -82,6 +86,7 @@ class OpenAIProvider(LLMProvider):
     name = "openai"
     local = False
     API_URL = "https://api.openai.com/v1/chat/completions"
+    HOST = "api.openai.com"
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         settings = get_settings()
@@ -93,6 +98,9 @@ class OpenAIProvider(LLMProvider):
 
     def model_id(self) -> str:
         return self._model
+
+    def destination(self) -> str:
+        return self.HOST
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         if not self.available():

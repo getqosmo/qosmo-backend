@@ -332,6 +332,108 @@ deployment.
 
 ---
 
+## Increment 3 — encrypted backup, and a recovery design
+
+301 tests (up from 268).
+
+This closes the item SECURITY.md had been carrying as an open gap since the
+first commit: *"Losing the master key today means losing the Vault contents."*
+That sentence was honest, and it was also the reason nobody adopts local-first
+software. One lost laptop and a decade of records is gone.
+
+### The design, and the three answers it rejects
+
+**Escrow the key with MyBot Inc.** Then MyBot Inc. can read every user's Vault
+and the local-first promise is theatre. Worse, it is a single point of
+compromise sitting on every user at once — the exact shape of breach this whole
+architecture exists to avoid.
+
+**Derive the backup key from the password.** A forgotten password becomes
+unrecoverable data, *and* a weak password becomes the entire security of the
+archive. A password change would have to re-wrap everything, at precisely the
+moment you least want a complex migration running.
+
+**No recovery.** What the previous build shipped. Honest, and unusable.
+
+What it does instead: each backup gets a **fresh random key** sealed over the
+payload, and that key is wrapped once per **recovery path** — a 24-word phrase
+(Argon2id, 256 MiB, shown exactly once and stored nowhere), plus any number of
+**recovery contacts** holding high-entropy material (HKDF; stretching material
+that is already random only makes recovery slow). Any single path opens the
+backup. None of them is us.
+
+Two properties fell out of writing it and are worth naming, because both were
+decisions rather than defaults:
+
+**The manifest is deliberately unencrypted.** Format, date, row counts, and
+which recovery paths the archive accepts — all readable with no key at all. The
+person this serves is holding an unlabelled file from two years ago and needs to
+know whether it is the one with their records in it *before* going to look for
+the paper. It leaks nothing: the wraps are useless without the owner's material,
+and the file names no owner, only a truncated hash. That hash is bound into the
+AEAD context, so it is not a label somebody can edit to make an archive look
+like it belongs to someone else — there is a test for exactly that.
+
+**Argon2 parameters are recorded in the archive, not read from today's
+constants.** Otherwise raising the cost as hardware improves — which we should
+be free to do — would silently orphan every existing backup, and the owner
+would discover it on the single day it mattered.
+
+Shamir *m*-of-*n* splitting is deliberately **not** implemented. It is the
+obvious next feature and it is exactly the clever cryptography this codebase has
+a rule against hand-rolling. The wrap format reserves a `scheme` field so a
+reviewed implementation drops in without a migration.
+
+### Findings
+
+**14. The recovery wordlist had a prefix collision.** `quarry` and `quartz`
+share four letters. Caught by a test asserting no two words match on their first
+four characters — which exists because the failure mode is a person squinting at
+their own handwriting years later, not an attacker. Replaced with `quiver`.
+
+**15. `parse_phrase_scheme("argon2id-")` raised `IndexError`, not
+`BackupError`.** An archive is untrusted input — it arrives from a USB stick or
+somebody's email — and an unhandled exception type meant a malformed one would
+escape the "try the next recovery path" loop and abort recovery entirely. Now
+every parse failure is a `BackupError`, a malformed wrap is skipped rather than
+fatal, and there is a test that a corrupted phrase wrap does not prevent a
+contact from opening the same file.
+
+**16. The manifest's `contents` map counted scalar keys as `1`.** So
+`describe` reported `"format": 1`, `"note": 1`, `"user": 1` alongside the real
+row counts, burying the numbers in the one view available to someone who cannot
+open the file. Collections only now.
+
+### Decisions
+
+**Backup is a CLI command, not an API endpoint.** An endpoint that returns a
+sealed archive *and* its recovery phrase converts a stolen session token into a
+permanent, offline copy of somebody's entire life. The export endpoint at least
+forces an attacker to keep stealing. A backup should be a physical act performed
+on your own Core.
+
+**Restore stops at reading the archive out.** It does not merge contents back
+into a live database. Which of two versions of a memory wins, and what happens
+to an audit chain that came from a different machine, are questions whose wrong
+answers corrupt the record *silently* — the worst failure mode available.
+Recovering the data is the promise this closes; re-import is separate work that
+deserves its own review.
+
+**The export payload was extracted into `mybot_api.export`.** The route and
+`mybot backup` now seal the same bytes from the same code. A backup that quietly
+omits a table the export includes is the kind of divergence nobody discovers
+until the day they need the backup — and the fix is one definition, not two that
+drift. It stays beside the serialisers rather than moving down into
+`mybot_services`, because those serialisers *are* the allowlist keeping
+`password_hash` and `ciphertext` out of responses, and a second copy one layer
+down would be a second copy to forget to update. There is a test asserting a
+restored backup contains no such field.
+
+**`RecoveryFailed` does not say which part was wrong.** Distinguishing "wrong
+phrase" from "corrupt file" hands an attacker holding the archive a free oracle.
+
+---
+
 ## Next steps
 
 Immediate, in order:
@@ -343,6 +445,7 @@ Immediate, in order:
 3. httpOnly cookie sessions, and server-sent events so the UI stops polling.
 4. Local model support via Ollama, which is what makes `PERSONAL`+ context
    viable without leaving the machine.
-5. Encrypted backup with a real recovery design.
+5. Scheduled backups in the daemon, and a reviewed Shamir implementation for
+   the `scheme` field the wrap format already reserves.
 
 Then V0.2 as described in `docs/ROADMAP.md`.

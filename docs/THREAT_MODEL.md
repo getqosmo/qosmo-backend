@@ -166,11 +166,16 @@ Unlocking requires STRONG — deliberately harder than locking.
 machine yields the master key. This is the gap the Core hardware exists to
 close, and it is stated in the UI rather than hidden.
 
+*Availability* is now separately covered: an encrypted backup is sealed under
+its own key, not the master key, so a device lost with no chance to lock it
+still loses the attacker nothing from the archive — and loses the owner nothing
+either, provided a backup exists.
+
 ---
 
 ## T8 — Database breach
 
-**Path.** Backup exfiltrated, or file access on the host.
+**Path.** Database file copied, or file access on the host.
 
 **Impact.** Personal records (A4, A5). Secrets only if the key is also taken.
 
@@ -184,6 +189,14 @@ rows is detectable.
 beyond disk-level encryption.** Entities, facts, obligations and email metadata
 are readable from a stolen database file. Per-record encryption is future work
 with a real cost in queryability, and pretending otherwise would be dishonest.
+
+**Note the asymmetry with a stolen `mybot backup` archive**, which is a
+different and much better case: an archive is sealed under a key that exists
+nowhere but in the owner's phrase and their recovery contacts' material. Whoever
+holds the file learns the format, the date, the row counts, and a truncated
+owner hash — and nothing else. This is the one artefact where "exfiltrated" is
+not a disclosure, and it is why backup is a local command rather than something
+the API will hand out (SECURITY.md §10).
 
 ---
 

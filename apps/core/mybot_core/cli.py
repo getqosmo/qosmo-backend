@@ -14,6 +14,8 @@ Commands::
     mybot brief         print today's brief
     mybot verify-audit  check every owner's audit chain
     mybot worry         print "what do I need to worry about?"
+    mybot backup        write an encrypted backup
+    mybot restore       open an encrypted backup
 """
 
 from __future__ import annotations
@@ -206,6 +208,147 @@ def cmd_worry(_args) -> int:
     return 0
 
 
+def cmd_backup(args) -> int:
+    """Write an encrypted backup of one owner's data.
+
+    Deliberately a *local* command rather than an API endpoint. An endpoint
+    that emits a sealed archive plus its recovery phrase over HTTP turns a
+    stolen session token into a permanent, offline copy of somebody's life --
+    the export endpoint at least gives them plaintext they must keep stealing.
+    A backup is a physical act: you run it on your Core.
+    """
+    from pathlib import Path
+
+    from mybot_api.export import build_export_payload
+    from mybot_schemas.enums import ActorType, AuditEventType
+    from mybot_security.backup import BackupService, phrase_checksum
+    from mybot_services.audit.service import AuditService
+
+    destination = Path(args.output)
+    if destination.exists() and not args.force:
+        print(f"  {destination} already exists. Use --force to overwrite.")
+        return 1
+
+    contacts: dict[str, bytes] = {}
+    for spec in args.contact or []:
+        if ":" not in spec:
+            print(f"  --contact expects NAME:FILE, got {spec!r}")
+            return 2
+        label, path = spec.split(":", 1)
+        material = Path(path).read_bytes()
+        if len(material) < 16:
+            print(f"  recovery material for {label} is too short to be a secret")
+            return 2
+        contacts[label] = material
+
+    with session_scope() as session:
+        owner_id = _resolve_owner(session, args.owner)
+        if owner_id is None:
+            return 2
+        with session_owner_scope(session, owner_id):
+            user = session.get(User, owner_id)
+            payload = build_export_payload(
+                db=session,
+                audit=AuditService(session),
+                owner_id=owner_id,
+                user=user,
+            )
+            archive, manifest, phrase = BackupService().create(
+                payload=payload,
+                owner_id=owner_id,
+                recovery_phrase=args.phrase,
+                contact_secrets=contacts or None,
+            )
+            # Recorded because a backup leaving the machine is exactly the kind
+            # of event an owner should be able to see afterwards. The phrase is
+            # not recorded -- writing it to the audit log would defeat it.
+            AuditService(session).record(
+                owner_id,
+                AuditEventType.DATA_EXPORTED,
+                actor_type=ActorType.USER,
+                actor_id=owner_id,
+                reason="owner created an encrypted backup",
+                result="backed up",
+                details={
+                    "recovery_paths": [w["path"] for w in manifest.wraps],
+                    "bytes": len(archive),
+                },
+            )
+
+    destination.write_bytes(archive)
+    destination.chmod(0o600)
+
+    print(f"\n  Backup written to {destination} ({len(archive):,} bytes)")
+    print(f"  Recovery paths : {', '.join(w['label'] for w in manifest.wraps)}")
+
+    if phrase:
+        words = phrase.split()
+        print("\n  ── Recovery phrase ──────────────────────────────────────")
+        print("  Write these 24 words down. They are shown once and are not")
+        print("  stored anywhere. Without them, and without a recovery contact,")
+        print("  this backup cannot be opened -- by you or by anyone else.\n")
+        for row in range(0, len(words), 4):
+            line = "  ".join(f"{row + i + 1:2}. {w:<10}" for i, w in enumerate(words[row : row + 4]))
+            print(f"    {line}")
+        print(f"\n  Checksum: {phrase_checksum(phrase)}  (to confirm you copied them correctly)")
+        print("  ─────────────────────────────────────────────────────────\n")
+    return 0
+
+
+def cmd_restore(args) -> int:
+    """Open a backup and print what it contains.
+
+    Stops short of writing the contents back into the database. Restoring into
+    a live Core is a merge problem -- which of two versions of a memory wins,
+    what happens to audit chains from a different machine -- and getting that
+    wrong silently corrupts the record. Recovering the *data* is the promise
+    this closes; re-import is a separate, reviewed piece of work.
+    """
+    import json
+    from pathlib import Path
+
+    from mybot_security.backup import BackupService, RecoveryFailed
+
+    service = BackupService()
+    archive = Path(args.archive).read_bytes()
+
+    if args.describe:
+        print(json.dumps(service.describe(archive), indent=2))
+        return 0
+
+    contact = None
+    if args.contact:
+        if ":" not in args.contact:
+            print("  --contact expects NAME:FILE")
+            return 2
+        label, path = args.contact.split(":", 1)
+        contact = (label, Path(path).read_bytes())
+
+    phrase = args.phrase
+    if phrase is None and contact is None:
+        import getpass
+
+        phrase = getpass.getpass("  Recovery phrase: ")
+
+    try:
+        payload = service.restore(archive, recovery_phrase=phrase, contact_secret=contact)
+    except RecoveryFailed as exc:
+        print(f"\n  Could not open this backup.\n  {exc}\n")
+        return 1
+
+    if args.output:
+        Path(args.output).write_text(json.dumps(payload, indent=2))
+        Path(args.output).chmod(0o600)
+        print(f"\n  Contents written to {args.output} (plaintext -- handle accordingly)\n")
+    else:
+        print("\n  Backup opened. Contents:\n")
+        for key, value in sorted(payload.items()):
+            if isinstance(value, list):
+                print(f"    {key:20} {len(value)}")
+        print("\n  Re-run with --output FILE to write the full JSON.\n")
+    return 0
+
+
 def cmd_verify_audit(_args) -> int:
     from mybot_services.audit.service import AuditService
 
@@ -223,6 +366,32 @@ def cmd_verify_audit(_args) -> int:
 
 
 # ---------------------------------------------------------------------------
+
+
+def _resolve_owner(session, requested: str | None) -> str | None:
+    """Pick the owner a single-owner command should act on.
+
+    Prints and returns ``None`` rather than guessing when a Core has several
+    owners and none was named -- backing up the wrong person's life silently is
+    worse than an error message.
+    """
+    owner_ids = _all_owner_ids(session)
+    if requested:
+        with session_system_scope(session, "CLI resolves an owner by id or email"):
+            match = session.execute(
+                sa.select(User.id).where(sa.or_(User.id == requested, User.email == requested))
+            ).scalar_one_or_none()
+        if match is None:
+            print(f"  No owner matching {requested!r} on this Core.")
+            return None
+        return match
+    if not owner_ids:
+        print("  No owners on this Core yet. Run `mybot demo` or register through the API.")
+        return None
+    if len(owner_ids) > 1:
+        print(f"  {len(owner_ids)} owners on this Core. Name one with --owner ID|EMAIL.")
+        return None
+    return owner_ids[0]
 
 
 def _all_owner_ids(session) -> list[str]:
@@ -295,6 +464,37 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify-audit", help="verify audit chain integrity").set_defaults(
         func=cmd_verify_audit
     )
+
+    backup = sub.add_parser("backup", help="write an encrypted backup")
+    backup.add_argument("output", help="path to write the archive to")
+    backup.add_argument("--owner", help="owner id or email (required if this Core has several)")
+    backup.add_argument(
+        "--phrase",
+        help="use this recovery phrase instead of generating one "
+        "(a generated 24-word phrase is stronger; use this only to reuse an existing one)",
+    )
+    backup.add_argument(
+        "--contact",
+        action="append",
+        metavar="NAME:FILE",
+        help="add a recovery contact holding the secret in FILE. Repeatable.",
+    )
+    backup.add_argument("--force", action="store_true", help="overwrite an existing file")
+    backup.set_defaults(func=cmd_backup)
+
+    restore = sub.add_parser("restore", help="open an encrypted backup")
+    restore.add_argument("archive", help="path to the backup archive")
+    restore.add_argument(
+        "--describe",
+        action="store_true",
+        help="show what the archive is and which recovery paths it accepts, without opening it",
+    )
+    restore.add_argument(
+        "--phrase", help="recovery phrase (prompted for interactively if omitted)"
+    )
+    restore.add_argument("--contact", metavar="NAME:FILE", help="recover using a contact's secret")
+    restore.add_argument("--output", help="write the decrypted contents to this file")
+    restore.set_defaults(func=cmd_restore)
 
     args = parser.parse_args(argv)
     configure_logging(get_settings().log_level, json_output=False)

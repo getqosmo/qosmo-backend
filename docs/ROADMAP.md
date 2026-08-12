@@ -58,9 +58,13 @@ exists.
 
 Roughly in order:
 
-1. **Encrypted backup with a real recovery story.** Losing the master key today
-   loses the Vault. Sharded escrow with user-held shares — designed carefully,
-   not improvised.
+1. ~~**Encrypted backup with a real recovery story.**~~ **Built.** A fresh
+   random key per backup, wrapped once per recovery path (24-word phrase via
+   Argon2id, plus optional recovery contacts), with no escrow held by us.
+   `mybot backup` / `mybot restore`; see SECURITY.md §10. What remains is
+   Shamir-style *m*-of-*n* share splitting for the "3 of 5 friends" case — the
+   wrap format reserves a field for it, and it is deliberately unimplemented
+   rather than hand-rolled. Scheduling and rotation are also still manual.
 2. **Per-record encryption for personal content.** A stolen database file
    currently discloses the Life Graph.
 3. **Supply chain**: pinning, vendoring, SBOM, reproducible builds.

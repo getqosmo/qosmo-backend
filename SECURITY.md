@@ -286,7 +286,9 @@ marketing.
 7. **Injection detection is pattern-based.** It is a *signal*, not a control —
    the architectural controls apply to all untrusted content regardless. Novel
    phrasings will evade the patterns and change nothing about safety.
-8. **Single-node.** No HA, no replication, no encrypted-backup rotation yet.
+8. **Single-node.** No HA, no replication. Encrypted backups exist (§10) but
+   nothing schedules or rotates them — running `mybot backup` is still a
+   deliberate act by a human.
 9. **Chat history retention is not yet enforced.** Messages are stored
    separately from durable memory but no expiry job runs. Notifications *are*
    purged on a schedule by the daemon.
@@ -298,14 +300,53 @@ marketing.
 
 ## 10. Backup and recovery
 
-Present: complete JSON export; the Vault holds ciphertext whose key lives
-outside the database, so a database backup alone discloses no secrets.
+Three things exist, and they protect different data.
 
-Not yet built: automated encrypted backups, zero-knowledge cloud blobs, and a
-recovery path for a lost master key. **Losing the master key today means losing
-the Vault contents** — deliberately, because the alternative is an escrow that
-becomes the single point of compromise. The recovery design (sharded escrow with
-user-held shares) is on the roadmap and should not be improvised.
+**The JSON export** (`GET /api/v1/account/export`) is everything MyBot holds
+about you in plain, boring JSON. No proprietary format, no partial export.
+
+**The encrypted backup** (`mybot backup`) seals the same payload into an
+archive that is useless to whoever stores it. Design, in one paragraph:
+
+* Each backup gets a **fresh random backup key**. Not the Vault master key, not
+  a key derived from the password — so a backup stays recoverable after the
+  machine is lost, and rotating the master key does not orphan old archives.
+* That key is wrapped once per **recovery path**: a 24-word phrase (Argon2id,
+  256 MiB, shown once and stored nowhere), and optionally one or more
+  **recovery contacts** holding high-entropy material (HKDF). Any single path
+  opens the backup.
+* **No path is MyBot Inc.** There is no escrow, because an escrow is a single
+  point of compromise sitting on every user at once, and "we hold a copy of
+  your key but promise not to look" is not a security property.
+* Argon2 parameters are recorded *in the archive*, so raising the cost later
+  does not orphan backups made today.
+* The manifest is deliberately readable without any key — format, date, row
+  counts, and which recovery paths it accepts — so a person holding an
+  unlabelled file from two years ago can tell what it is before hunting for
+  the paper. It names no owner: only a truncated hash, which is bound into the
+  AEAD context and so cannot be edited to relabel somebody else's archive.
+
+`mybot restore --describe` reads that manifest. `mybot restore` opens the
+contents with a phrase or a contact's material.
+
+Backup is a **local command, not an API endpoint**, and that is a security
+decision: an endpoint that emits a sealed archive plus its recovery phrase over
+HTTP converts a stolen session token into a permanent offline copy of somebody's
+life. The export endpoint at least forces an attacker to keep stealing.
+
+Restore stops at *printing or writing out* the contents. It does not merge them
+back into a live database — which of two versions of a memory wins, and what
+happens to an audit chain from a different machine, are questions whose wrong
+answers corrupt the record silently. Recovering the data is the promise this
+closes; re-import is separate, reviewed work.
+
+**Still not built:** Shamir-style "3 of 5 friends" share splitting. The wrap
+format reserves a `scheme` field for it. It is not implemented because a
+hand-rolled secret-sharing scheme is exactly the clever cryptography this
+codebase has a rule against — see §1.
+
+**Still true:** losing *every* recovery path means losing the data. That is not
+a gap to be closed; it is what "nobody else can read it" costs.
 
 ---
 
@@ -315,11 +356,14 @@ user-held shares) is on the roadmap and should not be improvised.
 pytest tests/security -v
 ```
 
-Ninety tests covering: the five rules; owner isolation via ORM, services and
+The security suite covers: the five rules; owner isolation via ORM, services and
 HTTP with a valid token for the wrong account; prompt injection end to end;
 lockdown and its effect on work in flight; approval replay, expiry and
 parameter binding; audit tampering with and without database triggers;
-redaction of both secret-shaped keys and secret-shaped values.
+redaction of both secret-shaped keys and secret-shaped values; rate limiting and
+brute-force resistance; and backup recovery — including that a tampered archive
+is refused, that each recovery path works alone, and that no plaintext survives
+into the sealed file.
 
 To confirm the chain by hand: `mybot verify-audit`.
 

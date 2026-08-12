@@ -109,6 +109,13 @@ path either.
 | `GET /api/v1/account/export` | Complete JSON: graph, memories, obligations, documents, actions, audit |
 | `POST /api/v1/account/data/delete` | Requires STRONG and the phrase `DELETE MY DATA` |
 
+**Encrypted backup has no endpoint, deliberately.** It is `mybot backup` on the
+Core. An endpoint returning a sealed archive *and* its one-time recovery phrase
+would turn a stolen session token into a permanent offline copy of the owner's
+data; the export above at least requires an attacker to keep stealing. Both
+seal the identical payload — `mybot_api.export.build_export_payload` builds it
+once for both callers. See SECURITY.md §10.
+
 ## Notifications
 
 | | |

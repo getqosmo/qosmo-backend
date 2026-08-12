@@ -180,91 +180,20 @@ def export_data(
 
     Secrets are excluded by construction: the Vault holds ciphertext and this
     export walks the domain models, not ``vault_secrets``.
-    """
-    import sqlalchemy as sa
-    from mybot_schemas.models import (
-        ActionProposal,
-        CalendarEvent,
-        Document,
-        EmailMessage,
-        Entity,
-        Fact,
-        InboxItem,
-        Memory,
-        Obligation,
-        Relationship,
-    )
 
-    from ..serializers import (
-        action_out,
-        audit_out,
-        entity_out,
-        fact_out,
-        inbox_item_out,
-        memory_out,
-        obligation_out,
-    )
+    The payload itself is built in ``mybot_api.export`` because ``mybot backup``
+    seals exactly the same structure.
+    """
+    from ..export import build_export_payload
 
     owner_id = principal.owner_id
-    db = services.db
 
-    def _all(model):
-        return list(db.execute(sa.select(model).where(model.owner_id == owner_id)).scalars())
-
-    payload = {
-        "format": "mybot-export-v1",
-        "exported_at": __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat(),
-        "user": {
-            "id": principal.user.id,
-            "email": principal.user.email,
-            "display_name": principal.user.display_name,
-            "timezone": principal.user.timezone,
-        },
-        "entities": [entity_out(e) for e in _all(Entity)],
-        "facts": [fact_out(f) for f in _all(Fact)],
-        "relationships": [
-            {
-                "id": r.id,
-                "from_id": r.from_id,
-                "to_id": r.to_id,
-                "type": r.relation_type,
-                "attributes": r.attributes,
-                "confidence": r.confidence,
-            }
-            for r in _all(Relationship)
-        ],
-        "memories": [memory_out(m) for m in _all(Memory)],
-        "obligations": [obligation_out(o) for o in _all(Obligation)],
-        "inbox_items": [inbox_item_out(i) for i in _all(InboxItem)],
-        "documents": [document_out(d) for d in _all(Document)],
-        "calendar_events": [
-            {
-                "id": e.id,
-                "title": e.title,
-                "start": e.start_at.isoformat(),
-                "end": e.end_at.isoformat(),
-                "location": e.location,
-            }
-            for e in _all(CalendarEvent)
-        ],
-        "emails": [
-            {
-                "id": e.id,
-                "from": e.from_address,
-                "subject": e.subject,
-                "received_at": e.received_at.isoformat(),
-                "classification": e.classification_label,
-            }
-            for e in _all(EmailMessage)
-        ],
-        "actions": [action_out(a) for a in _all(ActionProposal)],
-        "audit": [audit_out(e) for e in services.audit.list_events(owner_id, limit=500)],
-        "audit_verification": services.audit.verify_chain(owner_id).as_dict(),
-        "note": (
-            "Vault secrets are not included. They are encrypted with a key held by your "
-            "keystore and are not exportable through the API."
-        ),
-    }
+    payload = build_export_payload(
+        db=services.db,
+        audit=services.audit,
+        owner_id=owner_id,
+        user=principal.user,
+    )
 
     services.audit.record(
         owner_id,

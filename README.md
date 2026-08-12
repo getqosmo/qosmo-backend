@@ -61,7 +61,18 @@ mybot worry          # "what do I need to worry about?" in the terminal
 mybot brief          # today's brief
 mybot scan           # run one proactive pass
 mybot verify-audit   # verify every owner's audit hash chain
+mybot backup life.mybot          # encrypted backup + a 24-word recovery phrase
+mybot restore life.mybot --describe   # what is this file? (no key needed)
+mybot restore life.mybot         # open it
 ```
+
+`mybot backup` seals everything MyBot holds under a fresh random key, then wraps
+that key once per recovery path you have — a phrase you write down, and
+optionally a recovery contact. **No copy of any key is held by us**, which also
+means losing every path loses the data. It is a local command rather than an
+API endpoint on purpose: an endpoint that hands out a sealed archive *and* its
+recovery phrase turns a stolen session token into a permanent offline copy of
+your life. See [SECURITY.md §10](SECURITY.md).
 
 `mybot daemon` is the process that runs on the Core in your home. Each pass it
 syncs connectors, runs the proactive rules, evaluates your automations, and

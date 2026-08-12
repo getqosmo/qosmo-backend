@@ -111,6 +111,33 @@ mybot daemon --interval 30
 This is the process that makes MyBot proactive rather than
 reactive-when-opened. It adds no authority: same engines, same firewall.
 
+## Backup and restore
+
+```bash
+mybot backup life.mybot                       # + a 24-word phrase, shown once
+mybot backup life.mybot --contact Priya:priya.key   # add a recovery contact
+mybot restore life.mybot --describe           # what is this? (no key needed)
+mybot restore life.mybot                      # prompts for the phrase
+mybot restore life.mybot --contact Priya:priya.key --output out.json
+```
+
+`--owner ID|EMAIL` is required when the Core has more than one owner; with one
+it is inferred.
+
+A recovery contact's file is raw high-entropy material — 32 bytes from
+`/dev/urandom` is the intended shape, held by the person you would call if you
+lost the paper. It is stretched with HKDF rather than Argon2, because material
+that is already random gains nothing from stretching except a slow recovery.
+
+Backups round-trip through the *same* payload builder as `GET
+/api/v1/account/export` (`mybot_api.export`). If you add a table, add it there
+and both get it.
+
+The real Argon2 parameters are 256 MiB per derivation. `tests/security/
+test_backup.py` patches them down at module level and relies on the archive
+recording what it was made with — do not lower the production constants to make
+a test faster; there is a test asserting you have not.
+
 ## Working on the frontend
 
 `npm run dev` for iteration.

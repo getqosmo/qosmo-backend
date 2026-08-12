@@ -79,6 +79,10 @@ class _GoogleBase:
 
 
 class GoogleCalendarConnector(_GoogleBase, CalendarConnector):
+    #: Named for the egress ledger. Reads are outbound too: the query and the
+    #: owner's identity leave even though the data comes back.
+    host = "www.googleapis.com"
+
     provider = "google_calendar"
     is_mock = False
 
@@ -208,6 +212,8 @@ class GoogleCalendarAdapter(_GoogleBase, IntegrationAdapter):
 
 
 class GmailConnector(_GoogleBase, EmailConnector):
+    host = "gmail.googleapis.com"
+
     provider = "gmail"
     is_mock = False
 

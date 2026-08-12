@@ -128,6 +128,13 @@ class IntegrationAdapter(ABC):
 class CalendarConnector(ABC):
     provider: str = "unset"
     is_mock: bool = True
+    #: Hostname this connector talks to, or None when it runs in-process.
+    #:
+    #: Feeds the egress ledger. A *read* is still an outbound request -- the
+    #: query and the owner's identity go out even though the data comes back --
+    #: so a connector that reaches the network must name where.
+    host: str | None = None
+
 
     @abstractmethod
     def list_events(
@@ -139,6 +146,13 @@ class CalendarConnector(ABC):
 class EmailConnector(ABC):
     provider: str = "unset"
     is_mock: bool = True
+    #: Hostname this connector talks to, or None when it runs in-process.
+    #:
+    #: Feeds the egress ledger. A *read* is still an outbound request -- the
+    #: query and the owner's identity go out even though the data comes back --
+    #: so a connector that reaches the network must name where.
+    host: str | None = None
+
 
     @abstractmethod
     def list_messages(self, owner_id: str, since: dt.datetime, limit: int = 100) -> list[EmailMessageData]:

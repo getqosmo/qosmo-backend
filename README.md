@@ -231,7 +231,7 @@ Honesty about a V0.1 matters more than a long feature list.
 | Per-owner learning (corrections, preferences, growth) | Real, tested. Deterministic, never grants authority |
 | Sovereign mode (nothing leaves the machine) | Real, tested. Needs a local model to be useful |
 | Encrypted backup & recovery | Real, tested. Manual — nothing schedules it |
-| Egress ledger (everything that left your machine) | Real, tested. Covers model calls; connector syncs are not yet itemised |
+| Egress ledger (everything that left your machine) | Real, tested. Covers model calls **and** connector syncs |
 | Marketing site & social kit | `www/`. `npm run social` regenerates the assets |
 | Document ingestion (PDF + text) | Real. **No OCR** — images are stored and say so |
 | Calendar & email connectors | **Simulated by default.** Realistic fixtures |

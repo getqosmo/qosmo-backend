@@ -966,6 +966,46 @@ class ChatMessage(Base, UUIDPk, OwnedMixin, Timestamped):
     action_proposal_ids: Mapped[list] = mapped_column(JSONDict, default=list, nullable=False)
 
 
+class EgressEvent(Base, UUIDPk, OwnedMixin, Timestamped):
+    """One outbound request that was not a model call.
+
+    Connector syncs, and later OAuth exchanges and notification transports.
+    Model calls stay in :class:`LLMRun` because they carry model-specific
+    metadata, and the ledger unions the two.
+
+    Two tables rather than one is deliberate. Each is written by the code that
+    actually performs the thing it records, so neither can drift from reality —
+    a sync cannot happen without ``ConnectorSync`` writing a row, the same way
+    a model call cannot happen without the router writing one. A single
+    "telemetry" table populated by a separate reporting path is exactly the
+    design that lets a ledger quietly under-report.
+
+    Note that a *read* is egress. Syncing a mailbox sends the owner's identity
+    and a query outward even though the data flows back, and a ledger that only
+    counted uploads would be answering a different question than the one being
+    asked.
+    """
+
+    __tablename__ = "egress_events"
+    __table_args__ = (sa.Index("ix_egress_owner_at", "owner_id", "created_at"),)
+
+    #: Coarse category: ``connector.calendar``, ``connector.email``, ``oauth``,
+    #: ``notification``. Kept coarse because the ledger groups by it.
+    kind: Mapped[str] = mapped_column(sa.String(48), nullable=False)
+    provider: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    #: Hostname, or NULL when nothing left the machine.
+    destination: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+    left_machine: Mapped[bool] = mapped_column(sa.Boolean, default=False, nullable=False)
+
+    #: ``ok`` / ``unavailable`` / ``error``. Failures are recorded because a
+    #: request that timed out still left.
+    status: Mapped[str] = mapped_column(sa.String(32), default="ok", nullable=False)
+    detail: Mapped[str | None] = mapped_column(sa.String(500), nullable=True)
+    #: How many records came back. Shape, not content.
+    records: Mapped[int] = mapped_column(sa.Integer, default=0, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+
+
 class LearnedPreference(Base, UUIDPk, OwnedMixin, Timestamped):
     """Something MyBot worked out about this owner by watching them.
 
@@ -1070,6 +1110,7 @@ __all__ = [
     "DailyBrief",
     "Device",
     "Document",
+    "EgressEvent",
     "EmailMessage",
     "Entity",
     "Fact",

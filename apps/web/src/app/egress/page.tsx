@@ -39,7 +39,7 @@ export default function EgressPage() {
         <h1>What left your machine</h1>
         <p className="page-subtitle">
           Every request MyBot made on your behalf in the last {data?.window_days ?? 30} days —
-          including the ones that failed.
+          models it asked, accounts it checked, and the ones that failed.
         </p>
       </header>
 
@@ -87,7 +87,7 @@ export default function EgressPage() {
       {data && data.events.length === 0 && !ledger.loading ? (
         <Empty
           title="Nothing yet"
-          body="MyBot has not needed to call a model at all. When it does, every request will be listed here."
+          body="MyBot has not made a single outbound request. When it does — a model, or a check of a connected account — it will be listed here."
         />
       ) : null}
 

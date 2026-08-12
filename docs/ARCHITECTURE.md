@@ -323,6 +323,29 @@ firewall ──writes──▶ learning ──reads──▶ chat (phrasing only
     └── cannot read ─────┘
 ```
 
+### The egress ledger
+
+`mybot_services.egress` answers one question completely: *what has left this
+machine, when, where did it go, and why.*
+
+It unions two tables — `LLMRun` for model calls, `EgressEvent` for connector
+syncs — and that split is deliberate. Each is written by the code that actually
+performs the outbound work, so neither can drift from reality: a model call
+cannot happen without the router writing a row, a sync cannot happen without
+`ConnectorSync` writing one. A single "telemetry" table populated by a separate
+reporting path is exactly the design that lets a ledger quietly under-report.
+
+Three properties make it a ledger rather than a reassurance:
+
+* **Failures count.** A request that timed out still left.
+* **A read is egress.** Polling a mailbox sends the owner's identity and a
+  query outward even though data flows back. Counting only uploads would answer
+  a friendlier question than the one being asked.
+* **Unknown is representable.** `LLMRun.left_machine` is nullable, and NULL
+  means *no record* rather than *no*. Rows written before the ledger existed are
+  counted separately and never folded into either side, and the "nothing left"
+  headline is withheld while any exist.
+
 ---
 
 ## Audit

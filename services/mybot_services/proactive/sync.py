@@ -19,7 +19,13 @@ from mybot_integrations.base import IntegrationUnavailable
 from mybot_integrations.registry import IntegrationRegistry
 from mybot_schemas.db.types import utcnow
 from mybot_schemas.enums import ActorType, AuditEventType, IntegrationStatus
-from mybot_schemas.models import CalendarEvent, EmailMessage, Entity, Integration
+from mybot_schemas.models import (
+    CalendarEvent,
+    EgressEvent,
+    EmailMessage,
+    Entity,
+    Integration,
+)
 from mybot_security.logging import get_logger
 from sqlalchemy.orm import Session
 
@@ -60,6 +66,42 @@ class ConnectorSync:
         self.registry = registry
         self.audit = audit or AuditService(session)
 
+    def _record_egress(
+        self,
+        owner_id: str,
+        *,
+        kind: str,
+        connector,
+        status: str,
+        detail: str | None = None,
+        records: int = 0,
+        latency_ms: int | None = None,
+    ) -> None:
+        """Log the outbound request, whatever happened to it.
+
+        Written here rather than by a separate reporting path, so a sync cannot
+        occur without the ledger knowing. Failures count: a request that timed
+        out still left the machine.
+
+        A connector with no ``host`` runs in-process -- the simulated ones --
+        and is recorded as having stayed, so the ledger's local count stays
+        truthful rather than simply omitting the event.
+        """
+        host = getattr(connector, "host", None)
+        self.session.add(
+            EgressEvent(
+                owner_id=owner_id,
+                kind=kind,
+                provider=getattr(connector, "provider", "unknown"),
+                destination=host,
+                left_machine=bool(host),
+                status=status,
+                detail=(detail or None) and str(detail)[:500],
+                records=records,
+                latency_ms=latency_ms,
+            )
+        )
+
     def sync_all(
         self,
         owner_id: str,
@@ -92,10 +134,18 @@ class ConnectorSync:
         except IntegrationUnavailable as exc:
             result.unavailable["calendar"] = str(exc)
             self._mark_integration(owner_id, connector.provider, "error", str(exc))
+            self._record_egress(
+                owner_id, kind="connector.calendar", connector=connector,
+                status="unavailable", detail=str(exc),
+            )
             return
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.calendar_failed")
             result.unavailable["calendar"] = f"unexpected error: {type(exc).__name__}"
+            self._record_egress(
+                owner_id, kind="connector.calendar", connector=connector,
+                status="error", detail=type(exc).__name__,
+            )
             return
 
         for data in events:
@@ -128,6 +178,10 @@ class ConnectorSync:
             result.calendar_events += 1
 
         self.session.flush()
+        self._record_egress(
+            owner_id, kind="connector.calendar", connector=connector,
+            status="ok", records=result.calendar_events,
+        )
         self._mark_integration(owner_id, connector.provider, "ok", None, count=result.calendar_events)
 
     # -- email -----------------------------------------------------------
@@ -142,10 +196,18 @@ class ConnectorSync:
         except IntegrationUnavailable as exc:
             result.unavailable["email"] = str(exc)
             self._mark_integration(owner_id, connector.provider, "error", str(exc))
+            self._record_egress(
+                owner_id, kind="connector.email", connector=connector,
+                status="unavailable", detail=str(exc),
+            )
             return
         except Exception as exc:  # noqa: BLE001
             log.exception("sync.email_failed")
             result.unavailable["email"] = f"unexpected error: {type(exc).__name__}"
+            self._record_egress(
+                owner_id, kind="connector.email", connector=connector,
+                status="error", detail=type(exc).__name__,
+            )
             return
 
         known = self._known_contacts(owner_id)
@@ -196,6 +258,10 @@ class ConnectorSync:
             result.emails += 1
 
         self.session.flush()
+        self._record_egress(
+            owner_id, kind="connector.email", connector=connector,
+            status="ok", records=result.emails,
+        )
         self._mark_integration(owner_id, connector.provider, "ok", None, count=result.emails)
 
     # -- helpers ---------------------------------------------------------

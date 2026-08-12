@@ -386,3 +386,175 @@ def test_a_new_row_can_never_be_unknown(db, alice, as_alice):
     db.flush()
 
     assert row.left_machine is False
+
+
+# ---------------------------------------------------------------------------
+# Connector syncs are egress too
+#
+# The hole this closes: the ledger is the sharpest claim MyBot makes, and it
+# previously counted only model calls. A sync to Gmail sends the owner's
+# identity and a query outward, so a ledger reading "nothing left" while a
+# mailbox was being polled would be the exact dishonesty it exists to prevent.
+# ---------------------------------------------------------------------------
+
+
+def test_a_real_connector_sync_is_recorded_as_egress(db, alice, egress, services, as_alice):
+    from mybot_schemas.models import EgressEvent
+
+    class RemoteCalendar:
+        provider = "google_calendar"
+        host = "www.googleapis.com"
+
+        def list_events(self, owner_id, since, until):
+            return []
+
+    services.sync._record_egress(
+        alice.id, kind="connector.calendar", connector=RemoteCalendar(), status="ok", records=7
+    )
+    db.flush()
+
+    row = db.execute(sa.select(EgressEvent)).scalar_one()
+    assert row.left_machine is True
+    assert row.destination == "www.googleapis.com"
+
+    ledger = egress.ledger(alice.id)
+    assert ledger["left_machine"] == 1
+    assert ledger["nothing_left"] is False
+    assert ledger["destinations"] == [{"host": "www.googleapis.com", "count": 1}]
+    assert ledger["events"][0]["what"] == "Checking your calendar"
+
+
+def test_a_simulated_connector_is_recorded_as_having_stayed(db, alice, egress, as_alice):
+    """Recorded, not omitted.
+
+    The mock connectors run in-process, so nothing leaves -- but the event
+    still belongs in the local count, or the ledger's "answered here" number
+    quietly under-reports what MyBot actually did.
+    """
+    from mybot_services.proactive.sync import ConnectorSync
+
+    class InProcess:
+        provider = "mock_calendar"
+        host = None
+
+    ConnectorSync(db, None)._record_egress(
+        alice.id, kind="connector.calendar", connector=InProcess(), status="ok", records=4
+    )
+    db.flush()
+
+    ledger = egress.ledger(alice.id, only_external=False)
+    assert ledger["left_machine"] == 0
+    assert ledger["stayed_local"] == 1
+    assert ledger["nothing_left"] is True
+
+
+def test_a_failed_sync_still_counts_as_egress(db, alice, egress, as_alice):
+    from mybot_services.proactive.sync import ConnectorSync
+
+    class Remote:
+        provider = "gmail"
+        host = "gmail.googleapis.com"
+
+    ConnectorSync(db, None)._record_egress(
+        alice.id,
+        kind="connector.email",
+        connector=Remote(),
+        status="unavailable",
+        detail="connection reset",
+    )
+    db.flush()
+
+    ledger = egress.ledger(alice.id)
+    assert ledger["left_machine"] == 1
+    assert ledger["events"][0]["outcome"] == "could not be reached"
+
+
+def test_the_real_sync_path_records_egress(db, alice, egress, services, as_alice):
+    """Through ConnectorSync.sync_all, not a helper -- so the wiring is
+    exercised rather than the recording function."""
+    services.sync.sync_all(alice.id)
+    db.flush()
+
+    ledger = egress.ledger(alice.id, only_external=False)
+    kinds = {e["what"] for e in ledger["events"]}
+    assert "Checking your calendar" in kinds
+    assert "Checking your mailbox" in kinds
+    # The demo registry is simulated, so nothing should have left.
+    assert ledger["left_machine"] == 0
+    assert ledger["stayed_local"] >= 2
+
+
+def test_model_calls_and_syncs_appear_in_one_ledger(db, alice, egress, as_alice, monkeypatch):
+    from mybot_services.proactive.sync import ConnectorSync
+
+    class Remote:
+        provider = "gmail"
+        host = "gmail.googleapis.com"
+
+    router = _route(Cloud(), monkeypatch)
+    try:
+        router.run(db, alice.id, _request())
+    finally:
+        from mybot_schemas.config import reset_settings_cache
+
+        reset_settings_cache()
+
+    ConnectorSync(db, None)._record_egress(
+        alice.id, kind="connector.email", connector=Remote(), status="ok", records=12
+    )
+    db.flush()
+
+    ledger = egress.ledger(alice.id)
+    assert ledger["left_machine"] == 2
+    assert {d["host"] for d in ledger["destinations"]} == {
+        "api.example.com",
+        "gmail.googleapis.com",
+    }
+    # Newest first, across both sources.
+    assert [e["at"] for e in ledger["events"]] == sorted(
+        [e["at"] for e in ledger["events"]], reverse=True
+    )
+
+
+def test_counts_do_not_depend_on_the_page_size(db, alice, egress, as_alice):
+    """A ledger whose totals shrink when you ask for fewer rows would be
+    trivially misleading."""
+    from mybot_services.proactive.sync import ConnectorSync
+
+    class Remote:
+        provider = "gmail"
+        host = "gmail.googleapis.com"
+
+    sync = ConnectorSync(db, None)
+    for _ in range(25):
+        sync._record_egress(
+            alice.id, kind="connector.email", connector=Remote(), status="ok", records=1
+        )
+    db.flush()
+
+    assert egress.ledger(alice.id, limit=5)["left_machine"] == 25
+    assert len(egress.ledger(alice.id, limit=5)["events"]) == 5
+    assert egress.ledger(alice.id, limit=200)["left_machine"] == 25
+
+
+def test_sovereign_mode_does_not_silence_connector_egress(db, alice, egress, as_alice):
+    """Sovereign mode governs *models*, not connectors.
+
+    Somebody running sovereign with Gmail connected must not be told nothing
+    left -- their mail provider is still being contacted, and conflating the
+    two would be the ledger telling a comfortable lie.
+    """
+    from mybot_services.proactive.sync import ConnectorSync
+
+    class Remote:
+        provider = "gmail"
+        host = "gmail.googleapis.com"
+
+    ConnectorSync(db, None)._record_egress(
+        alice.id, kind="connector.email", connector=Remote(), status="ok", records=3
+    )
+    db.flush()
+
+    ledger = egress.ledger(alice.id)
+    assert ledger["nothing_left"] is False
+    assert ledger["left_machine"] == 1

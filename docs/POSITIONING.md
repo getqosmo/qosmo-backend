@@ -47,11 +47,13 @@ positioning document listing things we intend to build is a wish list.
 *"Show me every single thing that has left my machine, when, where it went,
 and why."*
 
-`GET /api/v1/egress`. Every model call, including the ones that failed — a
-request that timed out still left. Built from the same rows the router writes,
-so it cannot under-report without the call itself not having happened. In
-sovereign mode it reads **zero**, and that zero comes from the same table as
-every other number on the page, so it is checkable rather than claimed.
+`GET /api/v1/egress`. Every model call *and* every check of a connected
+account, including the ones that failed — a request that timed out still left,
+and polling a mailbox sends your identity outward even though the mail comes
+back. Built from the rows the doing code writes, so it cannot under-report
+without the work itself not having happened. With everything local it reads
+**zero**, and that zero comes from the same tables as every other number on the
+page, so it is checkable rather than claimed.
 
 No major assistant ships this. Not because it is hard.
 
@@ -119,7 +121,8 @@ Stated because a positioning document that only lists strengths is marketing,
 and because these are what a serious buyer will find in week two.
 
 - Connectors are simulated by default; the Google adapters are code-complete but
-  unverified against live endpoints.
+  unverified against live endpoints. Their egress *is* now itemised, so a real
+  connection will show up in the ledger the moment one is wired.
 - No local model has been run against this build — sovereign mode is a correct
   control over a capability that has not yet been demonstrated on real hardware.
 - Money cannot move. Deliberately, in V0.1.
